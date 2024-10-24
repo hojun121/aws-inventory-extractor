@@ -1,64 +1,49 @@
-# Project Setup and Execution Instructions
+# AWS Resource Inventory Extractor 
 
-## 1. Install Anaconda
+A module that uses awscli and the open-source tool Steampipe to extract AWS resources and export them to a structured inventory file.
 
-- Download and install Anaconda from the [Anaconda download page](https://www.anaconda.com/products/distribution#download-section).
+You can verify the explaination on [Detail Documantation(Jira Confluence)](https://hanwhavision.atlassian.net/wiki/x/T4KKK).
 
-## 2. Create a Virtual Environment
+## Tech Stack
+- [Steampipe wit aws plugin (Opensorce)](https://hub.steampipe.io/plugins/turbot/aws)
+- awscli
+- postgresql schema parser (In-house developed python code)
 
-Open a terminal or Anaconda Prompt and run the following command to create a virtual environment:
+## Steps of Operation
+- [1/4] Authenticate with AWS using awscli: IAM or SSO.
+- [2/4] Setup Steampipe config file.
+- [3/4] Extract AWS resources into an in-memory PostgreSQL.
+- [4/4] Extract an in-memory PostgreSQL to structured inventory file.
 
+## Pre-requirements
+- For fater extraction, 2 vCpu & 8 Ram are recommended
+- Docker version: v24.0.5
+- AWS Account
+- Steampipe Config
+
+## Execution Guide
+### [ Dev Env ]
+#### Dockerfile Build
 ```bash
-conda create -n myenv python=3.9
+docker build -f Dockerfile-dev -t {{dev-imageName}} .
 ```
-
-You can replace `myenv` with your desired environment name.
-
-## 3. Activate the Virtual Environment
-
-Activate the virtual environment with the following command:
-
+#### Container Run
 ```bash
-conda activate myenv
+docker run -itd --name {{dev-containerName}} -v {{Your Host Directory}}:/app/inventory {{dev-imageName}}
 ```
-
-## 4. Install Required Packages
-
-Install the necessary packages using the following command:
-
+#### Container exec
 ```bash
-pip install pandas openpyxl xlsxwriter SQLAlchemy psycopg2 tqdm
+docker exec -it {{dev-containerName}} bash
 ```
 
-### Explanation of Required Packages:
-- **pandas**: For data manipulation and analysis.
-- **openpyxl**: To work with Excel files in Python.
-- **xlsxwriter**: For creating Excel files.
-- **SQLAlchemy**: To manage database connections.
-- **psycopg2**: PostgreSQL database adapter for Python.
-
-## 5. Set Up Database Connection
-
-Ensure that the PostgreSQL database is running and that the connection URI in the `__init__.py` file is correctly set. The current format in the file is:
-
-```
-DB_URI = 'postgresql://username:password@localhost:port/dbname'
-```
-
-Update it with the actual credentials and connection details of your PostgreSQL instance.
-
-## 6. Run the Script
-
-Execute the `__init__.py` script with the following command:
-
+### [ Prod Env ]
+#### Dockerfile Build
 ```bash
-python __init__.py
+docker build -t {{imageName}} .
+```
+#### Container Run
+```bash
+docker run --rm -it -v {{Your Host Directory}}:/app/inventory {{imageName}} sh extract_inventory.sh
 ```
 
-Make sure the required directories (`file/upload` and `file/download`) exist. The script will process data and save the results in an Excel file.
-
-## 7. Check the Results
-
-The processed Excel file can be found in the `file/download` directory. The file is named based on the schema and the current date (e.g., `toolbox_prod_inventory_YYYYMMDD.xlsx`).
-
----
+The extracted inventory will be created in {{Your Host Directory}}.
