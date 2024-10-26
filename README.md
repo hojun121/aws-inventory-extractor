@@ -22,6 +22,15 @@ You can verify the explaination on [Detail Documantation(Jira Confluence)](https
 - Steampipe Config
 
 ## Execution Guide
+### [ Prod Env ]
+#### Dockerfile Build
+```bash
+docker build -t {{imageName}} .
+```
+#### Container Run
+```bash
+docker run --rm -it -v {{Your Host Directory}}:/app/inventory {{imageName}} sh extract_inventory.sh
+```
 ### [ Dev Env ]
 #### Dockerfile Build
 ```bash
@@ -36,14 +45,5 @@ docker run -itd --name {{dev-containerName}} -v {{Your Host Directory}}:/app/inv
 docker exec -it {{dev-containerName}} bash
 ```
 
-### [ Prod Env ]
-#### Dockerfile Build
-```bash
-docker build -t {{imageName}} .
-```
-#### Container Run
-```bash
-docker run --rm -it -v {{Your Host Directory}}:/app/inventory {{imageName}} sh extract_inventory.sh
-```
 
 The extracted inventory will be created in {{Your Host Directory}}.
