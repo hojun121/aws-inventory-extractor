@@ -52,10 +52,10 @@ def main():
     today = datetime.today().strftime('%y%m%d')
     schemas = get_schemas()
     for schema in schemas:
-        output_excel_path = os.path.join('/app/inventory', f'{schema}_inventory_{today}.xlsx')
-        os.makedirs('/app/inventory', exist_ok=True)
+        output_excel_path = os.path.join('/app/output/pre_processed', f'{schema}_inventory_{today}.xlsx')
+        os.makedirs('/app/output/pre_processed', exist_ok=True)
         queries = get_queries(schema)
-        process_and_save_sheets(queries, output_excel_path, engine)
+        process_and_save_sheets(queries, output_excel_path, engine, schema)
 
 def get_schemas():
     schemas = []
@@ -103,9 +103,9 @@ def get_queries(schema):
         'vpc': f'SELECT * FROM {schema}.aws_vpc',
     }
 
-def process_and_save_sheets(queries, output_excel_path, engine):
+def process_and_save_sheets(queries, output_excel_path, engine, schema):
     try:
-        data_dict = {query: pd.read_sql(queries[query], engine) for query in tqdm(queries, desc="Executing SQL Queries")}
+        data_dict = {query: pd.read_sql(queries[query], engine) for query in tqdm(queries, desc=f"Executing SQL Queries: {schema}")}
         with pd.ExcelWriter(output_excel_path, engine='xlsxwriter') as writer:
             transformation_tasks = [
                 ('VPC', load_and_transform_vpc_data, [data_dict['vpc'], data_dict['igw'], data_dict['ngw']]),

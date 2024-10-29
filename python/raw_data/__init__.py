@@ -32,8 +32,8 @@ def main():
     today = datetime.today().strftime('%y%m%d')
     schemas = get_schemas()
     for schema in schemas:
-        output_excel_path = os.path.join('/app/inventory', f'{schema}_inventory_{today}.xlsx')
-        os.makedirs('/app/inventory', exist_ok=True)
+        output_excel_path = os.path.join('/app/output/raw_data', f'{schema}_inventory_{today}.xlsx')
+        os.makedirs('/app/output/raw_data', exist_ok=True)
         queries = get_queries(schema)
         process_and_save_sheets(queries, output_excel_path, engine, schema)
 

@@ -37,7 +37,7 @@ This module supports a total of three modes.
 
 ## Pre-requirements
 - For fater extraction, 2 vCpu & 8 Ram are recommended
-- Docker version: v24.0.5
+- Docker version: v27.3.1
 - AWS Account: Read-Only Permissions (to security)
 - Steampipe Config
 
