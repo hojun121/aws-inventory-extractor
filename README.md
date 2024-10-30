@@ -81,10 +81,9 @@ docker exec -it {{dev-containerName}} bash
 - SSO Login
   - Input the below data to SSO login.
     ```
-    SSO session name (Recommended): hanwhavision
-    SSO start URL [None]: https://htaic.awsapps.com/start
-    SSO region [None]: us-west-2
-    SSO registration scopes [sso:account:access]:
+    SSO session name (hanwhavision): (Your SSO Session Name, Default: hanwhavision)
+    SSO start URL [https://htaic.awsapps.com/start]: (Your SSO URL, Default: https://htaic.awsapps.com/start)
+    SSO region [us-west-2]: (Your SSO Region, Default: us-west-2)
     ```
   - Open the following URL and enter the given code.
     
@@ -93,56 +92,10 @@ docker exec -it {{dev-containerName}} bash
   - After SSO login, allow access.
   
     ![image](https://github.com/user-attachments/assets/dd72cd0d-7060-45fb-8ae0-bf3b8f52967e)
-  
-  - If the login is successful and there are no issues with the permissions, the following screen will appear.
-  - **Please select any option.**
-  
-    ![image](https://github.com/user-attachments/assets/d9119b03-fb31-40b4-a3c0-1985dd9deeb2)
-  
-  - Leave the "default client region", "default output format", and "profile name" fields blank.
-  - Verify your role name.
-  
-    ![image](https://github.com/user-attachments/assets/89e1d050-121e-4bf0-8096-43efc0169251)
- 
-  - To overwrite aws config file, please enter the values in the format below.
-  - **DO NOT USE "-". ONLY "_" IS ALLOWED**
-    ```
-    [profile {{project_1 profile name}}]
-    sso_session = hanwhavision
-    sso_account_id = {{project_1 AWS Account}}
-    sso_role_name = {{Your role name}}
-    region = us-east-1
-    output = json
-    [profile {{project_2 profile name}}]
-    sso_session = hanwhavision
-    sso_account_id = {{project_2 AWS Account}}
-    sso_role_name = {{Your role name}}
-    region = us-east-1
-    output = json
-    ...
-    ```
 
 ### [ 2 / 5 ] Setup Steampipe config file.
-#### IAM Login Method
-- The IAM login Method Skips This Process.
 - This module extracts AWS resources according to the default region configured in IAM.
 
-#### SSO Login Method
-- To overwrite steampipe config file, please enter the values in the format below.
-- **DO NOT USE "-". ONLY "_" IS ALLOWED**
-  ```
-  connection "project_1 name" {
-    plugin = "aws"
-    profile = "project_1 profile name"
-    regions = ["us-east-1"]
-  }
-  connection "project_2 name" {
-    plugin = "aws"
-    profile = "project_2 profile name"
-    regions = ["us-east-1"]
-  }
-  ...
-  ``` 
 ### [ 3 / 5 ] Extract AWS resources into an in-memory PostgreSQL.
 - If all the above steps are completed successfully, extracting AWS resources into an in-memory PostgreSQL database will function properly.
 
