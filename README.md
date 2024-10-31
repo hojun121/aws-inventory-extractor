@@ -96,11 +96,24 @@ docker exec -it {{dev-containerName}} bash
   - Select AWS Account Profile Config Setup Method.
  
     ![image](https://github.com/user-attachments/assets/e1ab1526-2eee-460e-9767-ac40c85fc8ac)
-    - Auto: Extract SSO Accounts Profile Automatically, **you should inpit Default Region**.
+    - Auto: Extract SSO Accounts Profile Automatically, **you should input Default Region**.
     - Manual: Copy & Paste AWS Profile Context.
       ![image](https://github.com/user-attachments/assets/267737a0-c0db-46d4-8303-5ed6c7f04635)
+      ```
+      [profile {{Project_1 profile name}}]
+      sso_session = {{SSO Session name}}
+      sso_account_id = {{Project_1 AWS account}}
+      sso_role_name = {{Your role name}}
+      region = {{Account region}}
+      output = json
 
-       
+      [profile {{Project_2 profile name}}]
+      sso_session = {{SSO Session name}}
+      sso_account_id = {{Project_2 AWS account}}
+      sso_role_name = {{Your role name}}
+      region = {{Account region}}
+      output = json
+      ```
 
 ### [ 2 / 5 ] Setup Steampipe config file.
 - This module extracts AWS resources according to the default region configured in IAM.
