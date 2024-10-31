@@ -54,8 +54,8 @@ docker run --rm -it -v {{Your Host Directory}}:/app/inventory {{imageName}}
 ### [ Dev Env ]
 #### Dockerfile Build
 ```bash
-cd python
-docker build -f Dockerfile -t {{dev-imageName}} .
+cd python/pre_processor # or cd python/raw_data
+docker build -t {{dev-imageName}} .
 ```
 #### Container Run
 ```bash
