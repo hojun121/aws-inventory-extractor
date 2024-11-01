@@ -109,13 +109,13 @@ docker run --rm -it -v {{Your Host Directory}}:/app/inventory {{imageName}}
 
 ### [ 4 / 5 ] Select desired Mode.
 
-#### (1) Pre-procesing inventory mode
+- Pre-procesing inventory mode
   - Generates an inventory after preprocessing with a Python module.
 
-#### (2) Raw-data inventory mode
+- Raw-data inventory mode
   - Generates an inventory with raw-data.
 
-#### (3) Steampipe Query mode 
+- Steampipe Query mode 
   - Connect to [Steampipe Query](https://steampipe.io/docs/query/query-shell) (In-Memory PostgreSQL Interface Tool).
   - This mode does not extract the inventory.
 
