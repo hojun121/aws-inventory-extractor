@@ -100,7 +100,7 @@ docker run --rm -it -v {{Your Host Directory}}:/app/inventory {{imageName}}
       ```
 
 ### [ 2 / 5 ] Setup Steampipe config file.
-- This module extracts AWS resources according to the default region configured in IAM.
+- Automatically configure Steampipe config file based on AWS profile.
 
 ### [ 3 / 5 ] Extract AWS resources into an in-memory PostgreSQL.
 - If all the above steps are completed successfully, extracting AWS resources into an in-memory PostgreSQL database will function properly.
