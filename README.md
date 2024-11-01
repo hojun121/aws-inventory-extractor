@@ -1,14 +1,27 @@
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/08ed8337-916c-4ae7-8c1c-66d26ff85329" alt="AWS Resource Inventory Extractor">
-</p>
-
 # AWS Resource Inventory Extractor
 
 A module that uses awscli and the open-source tool Steampipe to extract AWS resources and export them to a structured inventory file.
 
-This module supports a total of three modes.
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/08ed8337-916c-4ae7-8c1c-66d26ff85329" alt="AWS Resource Inventory Extractor">
+</p>
 
-- Extract pre-procesing inventory mode
+
+## Tech Stack
+- [Steampipe wit aws plugin (Opensorce)](https://hub.steampipe.io/plugins/turbot/aws)
+- AWSCLI Latest
+- Python (In-house developed code)
+
+## Pre-requirements
+- 2 vCPU / 8 RAM
+- Docker Version >= v24.0.2
+- IAM or SSO Auth: Read-Only Permissions (to security)
+
+## Currently Extractable Items
+
+For additional items, please send a request to jaeho.p@hanwha.com
+
+```
   - VPC, VPC Endpoint, Peering Connection
   - Transit Gateway
   - Subnet
@@ -23,27 +36,13 @@ This module supports a total of three modes.
   - S3
   - IAM Group, Role, User
   - RDS, DocumentDB
+```
 
-- Extract raw-data inventory mode
-  - All active AWS resources
+## Usage Detail Guide
 
-- Connect [Steampipe Query](https://steampipe.io/docs/query/query-shell) (In-Memory PostgreSQL Interface Tool) mode
-  - Connect to In-MemoryDB
+### You can run the module using a container.
 
-## Tech Stack
-- [Steampipe wit aws plugin (Opensorce)](https://hub.steampipe.io/plugins/turbot/aws)
-- awscli
-- postgresql schema parser (In-house developed python code): v1.0.2
-
-## Pre-requirements
-- For fater extraction, 2 vCpu & 8 Ram are recommended
-- Docker version: v27.3.1
-- AWS Account: Read-Only Permissions (to security)
-- Steampipe Config
-
-## Execution Guide
-### [ Prod Env ]
-#### Dockerfile Build
+#### Container Image Build
 ```bash
 docker build -t {{imageName}} .
 ```
@@ -51,22 +50,7 @@ docker build -t {{imageName}} .
 ```bash
 docker run --rm -it -v {{Your Host Directory}}:/app/inventory {{imageName}}
 ```
-### [ Dev Env ]
-#### Dockerfile Build
-```bash
-cd python/pre_processor # or cd python/raw_data
-docker build -t {{dev-imageName}} .
-```
-#### Container Run
-```bash
-docker run -itd --name {{dev-containerName}} -v {{Your Host Directory}}:/app/inventory {{dev-imageName}}
-```
-#### Container exec
-```bash
-docker exec -it {{dev-containerName}} bash
-```
 
-## Steps of Operation
 ### [ 1 / 5 ] Authenticate with AWS using awscli: IAM or SSO.
 
 - IAM Login
@@ -124,8 +108,16 @@ docker exec -it {{dev-containerName}} bash
   ![image](https://github.com/user-attachments/assets/15e94696-beb0-4c10-ad6e-9d9f3121d27b)
 
 ### [ 4 / 5 ] Select desired Mode.
-- If you select Pre-processing or Raw-data mode, than go to step 5.
-- If you select Steampipe Query, than conn to DB Session.
+
+#### [1] Pre-procesing inventory mode
+  - Generates an inventory after preprocessing with a Python module.
+
+#### [2] Raw-data inventory mode
+  - Generates an inventory with raw-data.
+
+#### [3] Steampipe Query mode 
+  - Connect to [Steampipe Query](https://steampipe.io/docs/query/query-shell) (In-Memory PostgreSQL Interface Tool).
+  - This mode does not extract the inventory.
 
 ### [ 5 / 5 ] Extract an in-memory postgreSQL to structured inventory file.
 - The inventory file(s) will be successfully created in the inventory volume.
