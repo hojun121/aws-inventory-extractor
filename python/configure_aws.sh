@@ -8,9 +8,8 @@ read -p "SSO Region [us-west-2]: " SSO_REGION
 SSO_REGION=${SSO_REGION:-us-west-2}
 read -p "AWS Profile Default Region [us-east-1]: " REGION
 REGION=${REGION:-us-east-1}
-sudo mkdir -p /home/steampipe/.aws
-sudo chown -R steampipe:steampipe /home/steampipe/.aws
-tee /home/steampipe/.aws/config > /dev/null <<EOT
+sudo mkdir -p /root/.aws
+tee /root/.aws/config > /dev/null <<EOT
 [sso-session $SSO_SESSION_NAME]
 sso_start_url = $SSO_URL
 sso_region = $SSO_REGION
@@ -73,26 +72,3 @@ echo "$accounts_json" | jq -c '.accountList[]' | while read -r account; do
 	echo "> Profile configured: { ProfileName: $profile_name, AccountId: $account_id, RoleName: $role_name" }
     done
 done
-
-# Define the input and output files
-input_file="/home/steampipe/.aws/config"
-output_file="/home/steampipe/.steampipe/config/aws.spc"
-# Clear the output file if it exists
-> "$output_file"
-# Read each profile block from the input file
-while read -r line; do
-    # Check if the line starts with [profile
-    if [[ $line == [profile* ]]; then
-        # Extract the profile name by removing the "[profile " and "]"
-        profile_name=$(echo "$line" | sed 's/\[profile //; s/\]//')
-
-        # Append the new format to the output file
-        {
-            echo "connection \"$profile_name\" {"
-            echo "  plugin = \"aws\""
-            echo "  profile = \"$profile_name\""
-            echo "  regions = [\"us-east-1\"]"  # Adjust the default region as needed
-            echo "}"
-        } >> "$output_file"
-    fi
-done < "$input_file"
