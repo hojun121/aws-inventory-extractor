@@ -4,6 +4,7 @@ import json
 import os
 import re
 import sys
+import subprocess
 import multiprocessing
 from datetime import datetime
 from modules.asg import list_auto_scaling_groups
@@ -56,7 +57,7 @@ def write_dataframes_to_excel(dataframes, profile_name):
                 for cell in column:
                     cell.alignment = Alignment(horizontal='center', vertical='center')
         workbook.save(file_name_with_dir)
-
+        subprocess.run(['cp', file_name_with_dir, "/app/inventory"], check=True)
         print(f"[{profile_name}] Inventory creation successful => {file_name}")
     except Exception as e:
         print(f"Error writing data to Excel: {e}")
@@ -135,5 +136,3 @@ if __name__ == "__main__":
         multi_inventory_maker(profile_names)
     else:
         single_inventory_maker("default")
-
-    
