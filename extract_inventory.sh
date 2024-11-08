@@ -150,5 +150,5 @@ while [ $i -gt 0 ]; do
 done
 
 /app/inventory_binary
-cp -r /app/output /app/inventory
+cp -r /app/output/* /app/inventory
 cowsay -f turtle "AWS Inventory Extraction is done. Please Confirm Your Inventorys!" | lolcat
