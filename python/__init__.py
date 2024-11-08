@@ -7,6 +7,7 @@ import sys
 import subprocess
 import multiprocessing
 from datetime import datetime
+from modules.msk import list_kafka_clusters
 from modules.asg import list_auto_scaling_groups
 from modules.cloudfront import list_cloudfront_distributions
 from modules.ec2 import list_ec2_instances
@@ -57,7 +58,8 @@ def write_dataframes_to_excel(dataframes, profile_name):
                 for cell in column:
                     cell.alignment = Alignment(horizontal='center', vertical='center')
         workbook.save(file_name_with_dir)
-        subprocess.run(['cp', file_name_with_dir, "/app/inventory"], check=True)
+        if os.path.isdir('/app/inventory'):
+            subprocess.run(['cp', file_name_with_dir, "/app/inventory"], check=True)
         print(f"[{profile_name}] Inventory creation successful => {file_name}")
     except Exception as e:
         print(f"Error writing data to Excel: {e}")
@@ -72,11 +74,12 @@ def list_all_resources(session, profile_name):
         (list_auto_scaling_groups, 'Auto Scaling Groups'),
         (list_elbs, 'Load Balancers'),
         (list_target_groups, 'Target Groups'),
-        (list_cloudfront_distributions, 'CloudFront Distributions'),
-        (list_s3_buckets, 'S3 Buckets'),
+        (list_cloudfront_distributions, 'CloudFront'),
+        (list_s3_buckets, 'S3'),
         (list_iam_roles, 'IAM Roles'),
         (list_db_clusters, 'Database'),
-        (list_elasticache_clusters, 'ElastiCache Clusters')
+        (list_elasticache_clusters, 'ElastiCache'),
+        (list_kafka_clusters, 'MSK')
     ]
 
     dataframes = {}
