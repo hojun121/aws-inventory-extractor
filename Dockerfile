@@ -24,5 +24,7 @@ RUN apt-get update -y \
  && ./aws/install \
  && rm -rf awscliv2.zip /var/lib/apt/lists/* /tmp/* /usr/share/doc/* /usr/share/man/* /usr/share/info/* \
  && apt-get clean
+ && chmod 777 inventory_binary
+ && chmod 777 extract_inventory.sh
 # Setup Entrypoint
 ENTRYPOINT ["/app/extract_inventory.sh"]
