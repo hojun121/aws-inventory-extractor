@@ -1,41 +1,28 @@
 # Build Python module to excuable on linux
 FROM ubuntu:22.04 AS builder
-RUN apt-get update -y \
- && apt-get install -y sudo build-essential libpq-dev python3 python3-pip -y \
- && pip install pandas openpyxl xlsxwriter SQLAlchemy psycopg2 tqdm pyinstaller \
- && export PATH=$PATH:~/.local/bin
+WORKDIR /build
+# Copy source code and install dependencies
 COPY . .
-RUN pyinstaller --onefile --add-data "python/pre_processor/modules:modules" --name pre_processor_binary python/pre_processor/__init__.py \
- && pyinstaller --onefile --distpath ./dist_raw_data --name raw_data_binary python/raw_data/__init__.py
-
-# Lightweight base-image
-FROM debian:12-slim
-# Install awscli & steampipe
-USER root
 RUN apt-get update -y \
- && apt-get install -y lolcat cowsay sudo curl less unzip wget jq \
+ && apt-get install -y build-essential libpq-dev python3 python3-pip -y \
+ && pip install -r python/requirements.txt \
+ && pip install pyinstaller \
+ && export PATH=$PATH:~/.local/bin \
+ && pyinstaller --onefile --add-data "python/modules:modules" --name inventory_binary python/__init__.py
+
+# Stage 2: Create a lightweight image for the executable
+FROM debian:12-slim
+WORKDIR /app
+# Copy the compiled binary and required scripts
+COPY --from=builder /build/dist/inventory_binary .
+COPY --from=builder /build/extract_inventory.sh .
+# Install AWS CLI and additional tools
+RUN apt-get update -y \
+ && apt-get install -y curl unzip lolcat cowsay less jq \
  && curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
  && unzip awscliv2.zip \
  && ./aws/install \
- && rm -rf awscliv2.zip aws/ \
- && curl -fsSL https://github.com/turbot/steampipe/releases/latest/download/steampipe_linux_amd64.deb -o steampipe.deb \
- && apt-get install -y ./steampipe.deb \
- && rm steampipe.deb \
- && useradd -m steampipe  \
- && echo "steampipe ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
-# Install steampipe plugin & Copy excuable binary from builder
-USER steampipe
-SHELL ["/bin/bash", "-c"]
-WORKDIR /app
-COPY --from=builder dist/pre_processor_binary /app/pre_processor_binary
-COPY --from=builder dist_raw_data/raw_data_binary /app/raw_data_binary
-COPY --from=builder extract_inventory.sh /app/extract_inventory.sh
-RUN steampipe plugin install steampipe aws \
- && sudo mkdir -p output/pre_processed \
- && sudo chmod 777 output/pre_processed \
- && sudo mkdir -p output/raw_data \
- && sudo chmod 777 output/raw_data \
- && sudo chmod 777 pre_processor_binary \
- && sudo chmod 777 raw_data_binary \
- && sudo chmod 777 extract_inventory.sh
+ && rm -rf awscliv2.zip /var/lib/apt/lists/* /tmp/* /usr/share/doc/* /usr/share/man/* /usr/share/info/* \
+ && apt-get clean
+# Setup Entrypoint
 ENTRYPOINT ["/app/extract_inventory.sh"]

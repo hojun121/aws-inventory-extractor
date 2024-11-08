@@ -8,7 +8,6 @@ A module that uses awscli and the open-source tool Steampipe to extract AWS reso
 
 
 ## Tech Stack
-- [Steampipe wit aws plugin (Opensorce)](https://hub.steampipe.io/plugins/turbot/aws)
 - AWSCLI Latest
 - Python (In-house developed code)
 
@@ -51,7 +50,7 @@ docker build -t {{imageName}} .
 docker run --rm -it -v {{Your Host Directory}}:/app/inventory {{imageName}}
 ```
 
-### [ 1 / 5 ] Authenticate with AWS using awscli: IAM or SSO.
+### [ 1 / 2 ] Authenticate with AWS using awscli: IAM or SSO.
 
 - IAM Login
   - Input the below data to IAM login.
@@ -80,7 +79,7 @@ docker run --rm -it -v {{Your Host Directory}}:/app/inventory {{imageName}}
   - Select AWS Account Profile Config Setup Method.
  
     ![image](https://github.com/user-attachments/assets/e1ab1526-2eee-460e-9767-ac40c85fc8ac)
-    - Auto: Extract SSO Accounts Profile Automatically, **you should input Default Region**.
+    - Auto: Extract SSO Accounts Profile Automatically.
     - Manual: Copy & Paste AWS Profile Context.
       ![image](https://github.com/user-attachments/assets/267737a0-c0db-46d4-8303-5ed6c7f04635)
       ```
@@ -98,26 +97,5 @@ docker run --rm -it -v {{Your Host Directory}}:/app/inventory {{imageName}}
       region = {{Account region}}
       output = json
       ```
-
-### [ 2 / 5 ] Setup Steampipe config file.
-- Automatically configure Steampipe config file based on AWS profile.
-
-### [ 3 / 5 ] Extract AWS resources into an in-memory PostgreSQL.
-- If all the above steps are completed successfully, extracting AWS resources into an in-memory PostgreSQL database will function properly.
-
-  ![image](https://github.com/user-attachments/assets/15e94696-beb0-4c10-ad6e-9d9f3121d27b)
-
-### [ 4 / 5 ] Select desired Mode.
-
-- Pre-procesing inventory mode
-  - Generates an inventory after preprocessing with a Python module.
-
-- Raw-data inventory mode
-  - Generates an inventory with raw-data.
-
-- Steampipe Query mode 
-  - Connect to [Steampipe Query](https://steampipe.io/docs/query/query-shell) (In-Memory PostgreSQL Interface Tool).
-  - This mode does not extract the inventory.
-
-### [ 5 / 5 ] Extract an in-memory postgreSQL to structured inventory file.
+### [ 2 / 2 ] Extract an in-memory postgreSQL to structured inventory file.
 - The inventory file(s) will be successfully created in the inventory volume.
