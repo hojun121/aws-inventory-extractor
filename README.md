@@ -35,6 +35,7 @@ For additional items, please send a request to jaeho.p@hanwha.com
   - S3
   - IAM Group, Role, User
   - RDS, DocumentDB
+  - MSK
 ```
 
 ## Usage Detail Guide
