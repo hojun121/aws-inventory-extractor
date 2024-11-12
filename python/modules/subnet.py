@@ -56,12 +56,18 @@ def list_subnets(session):
             network_acl_ids = ', '.join([acl['NetworkAclId'] for acl in network_acls]) if network_acls else 'None'
             network_acl_names = ', '.join([get_tag_value(acl.get('Tags', []), 'Name') for acl in network_acls]) if network_acls else 'None'
             
+            # Calculate total IPs and available IPs in the subnet
+            total_ips_count = 2 ** (32 - int(cidr_block.split('/')[-1]))
+            available_ips_count = subnet['AvailableIpAddressCount']
+            
             # Append the gathered data to the list
             subnet_data.append({
                 'Name': subnet_name,
                 'ID': subnet_id,
                 'Subnet Type': subnet_type,
                 'Subnet CIDR Block': cidr_block,
+                'Total IPs': total_ips_count,
+                'Available IPs': available_ips_count,
                 'Availability Zone': availability_zone,
                 'Route Table ID': route_table_ids,
                 'Route Table Name': route_table_names,

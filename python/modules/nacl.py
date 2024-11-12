@@ -51,28 +51,3 @@ def list_nacls(session):
         print(f"Error retrieving NACLs: {e}")
 
     return nacls
-
-def list_all_resources():
-    # Set up profile
-    try:
-        session = boto3.Session(profile_name='sightmind_prod')
-    except Exception as e:
-        print(f"Error creating session: {e}")
-        return
-
-    # Get data from individual functions
-    nacls_data = list_nacls(session)
-
-    # Create DataFrames
-    nacls_df = pd.DataFrame(nacls_data)
-
-    # Write to Excel
-    try:
-        with pd.ExcelWriter('aws_resources.xlsx', engine='openpyxl') as writer:
-            nacls_df.to_excel(writer, sheet_name='NACLs', index=False)
-        print("Data has been written to aws_resources.xlsx")
-    except Exception as e:
-        print(f"Error writing to Excel: {e}")
-
-if __name__ == "__main__":
-    list_all_resources()
