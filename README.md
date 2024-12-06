@@ -98,5 +98,5 @@ docker run --rm -it -v {{Your Host Directory}}:/app/inventory {{imageName}}
       region = {{Account region}}
       output = json
       ```
-### [ 2 / 2 ] Extract an in-memory postgreSQL to structured inventory file.
+### [ 2 / 2 ] Extract to structured inventory file.
 - The inventory file(s) will be successfully created in the inventory volume.
