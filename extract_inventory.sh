@@ -46,7 +46,7 @@ sso_registration_scopes = sso:account:access
 EOT
     echo ""
     # AWS SSO Session Login
-    aws sso login --sso-session "$SSO_SESSION_NAME"
+    aws sso login --sso-session "$SSO_SESSION_NAME" --no-browser
 
     echo "\n\033[1;34mSelect AWS Account Profile Config Setup Method.\033[0m"
     echo "\033[1;34m(1) Auto: The region for all AWS account profiles is set to Same Region(Default Region).\033[0m"
