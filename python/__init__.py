@@ -58,7 +58,7 @@ def write_dataframes_to_excel(dataframes, profile_name):
         return
 
     current_date = datetime.now().strftime('%y_%m_%d')
-    file_name = f"[{profile_name}]_inventory_{current_date}.xlsx"
+    file_name = f"{profile_name}_inventory_{current_date}.xlsx"
     file_name_with_dir = f"{temporary_path}{file_name}"
     os.makedirs(os.path.dirname(file_name_with_dir), exist_ok=True)
 
@@ -68,7 +68,7 @@ def write_dataframes_to_excel(dataframes, profile_name):
                 df.to_excel(writer, sheet_name=sheet_name, index=False)
 
         workbook_with_format(file_name_with_dir)
-        print(f"[{profile_name}] Inventory creation successful => {file_name}")
+        print(f"{profile_name} Inventory creation successful => {file_name}")
         
     except Exception as e:
         print(f"Error writing data to Excel: {e}")
@@ -92,7 +92,7 @@ def list_all_resources(session, profile_name):
     ]
 
     dataframes = {}
-    for func, sheet_name in tqdm(resource_functions, desc=f"[{profile_name}] Inventory creation in progress", unit="resource"):
+    for func, sheet_name in tqdm(resource_functions, desc=f"{profile_name} Inventory creation in progress", unit="resource"):
         try:
             data = func(session)
             if data:
@@ -117,7 +117,7 @@ def single_inventory_maker(profile_name):
     if session:
         list_all_resources(session, profile_name)
     else:
-        print(f"[{profile_name}] Session is something wrong..")
+        print(f"{profile_name} Session is something wrong..")
 
 def multi_inventory_maker(profile_names):
     print(f"### Total AWS Profiles: {len(profile_names)} ###")
