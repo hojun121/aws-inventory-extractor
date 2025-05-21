@@ -18,6 +18,7 @@ from modules.nacl import list_nacls
 from modules.db import list_db_clusters
 from modules.s3 import list_s3_buckets
 from modules.sg import list_security_groups
+from modules.sg_resource_mapper import map_sg_to_resources
 from modules.subnet import list_subnets
 from modules.tg import list_target_groups
 from modules.vpc import list_vpcs
@@ -26,6 +27,7 @@ from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Alignment, PatternFill
 from tqdm import tqdm
+
 
 temporary_path="/app/output/"
 inventory_path='/app/inventory'
@@ -52,7 +54,7 @@ def workbook_with_format(file_name_with_dir):
     except Exception as e:
         return e
 
-def write_dataframes_to_excel(dataframes, profile_name):
+def write_dataframes_to_excel_with_sg_map(dataframes, profile_name, session):
     if not dataframes:
         print("No data available to write to Excel.")
         return
@@ -63,13 +65,29 @@ def write_dataframes_to_excel(dataframes, profile_name):
     os.makedirs(os.path.dirname(file_name_with_dir), exist_ok=True)
 
     try:
+        sg_map_data = map_sg_to_resources(session)
+        sg_df = pd.DataFrame(sg_map_data)
+
+        # Reorder: insert SG Mapping right after Security Groups
+        ordered_keys = []
+        for key in dataframes.keys():
+            ordered_keys.append(key)
+            if key == "Security Groups":
+                ordered_keys.append("Security Groups Mapping")
+
+        ordered_dataframes = {}
+        for key in ordered_keys:
+            if key == "Security Groups Mapping":
+                ordered_dataframes[key] = sg_df
+            else:
+                ordered_dataframes[key] = dataframes[key]
+
         with pd.ExcelWriter(file_name_with_dir) as writer:
-            for sheet_name, df in dataframes.items():
+            for sheet_name, df in ordered_dataframes.items():
                 df.to_excel(writer, sheet_name=sheet_name, index=False)
 
         workbook_with_format(file_name_with_dir)
-        print(f"{profile_name} Inventory creation successful => {file_name}")
-        
+        print(f"{profile_name} Inventory creation successful with SG Mapping => {file_name}")
     except Exception as e:
         print(f"Error writing data to Excel: {e}")
 
@@ -88,7 +106,8 @@ def list_all_resources(session, profile_name):
         (list_iam_roles, 'IAM Roles'),
         (list_db_clusters, 'Database'),
         (list_elasticache_clusters, 'ElastiCache'),
-        (list_kafka_clusters, 'MSK')
+        (list_kafka_clusters, 'MSK'),
+        (list_target_groups, 'Target Groups')
     ]
 
     dataframes = {}
@@ -100,7 +119,7 @@ def list_all_resources(session, profile_name):
         except Exception as e:
             print(f"\nError retrieving data for {sheet_name}: {e}")
 
-    write_dataframes_to_excel(dataframes, profile_name)
+    write_dataframes_to_excel_with_sg_map(dataframes, profile_name, session)
 
 def create_boto3_session(profile_name):
     try:
