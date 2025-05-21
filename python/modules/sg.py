@@ -41,14 +41,14 @@ def list_security_groups(session):
                     'Usage': usage_flag,
                     'Name': name,
                     'Security Group ID': security_group_id,
-                    'Description': description,
+                    'SG Description': description,
                     'Region': region,
                     'Direction': '-',
                     'Protocol': '-',
                     'Port Range': '-',
                     'Source': '-',
                     'Destination': '-',
-                    'Src/Dst Description': '-'
+                    'Rules Src/Dst Description': '-'
                 })
 
             # Extract rules from Inbound (Ingress) and Outbound (Egress)

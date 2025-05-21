@@ -19,6 +19,8 @@ from modules.db import list_db_clusters
 from modules.s3 import list_s3_buckets
 from modules.sg import list_security_groups
 from modules.sg_resource_mapper import map_sg_to_resources
+from modules.sg_centric_rules import map_sg_rules_with_resources
+from modules.sg_summary import map_sg_summary
 from modules.subnet import list_subnets
 from modules.tg import list_target_groups
 from modules.vpc import list_vpcs
@@ -65,20 +67,25 @@ def write_dataframes_to_excel_with_sg_map(dataframes, profile_name, session):
     os.makedirs(os.path.dirname(file_name_with_dir), exist_ok=True)
 
     try:
-        sg_map_data = map_sg_to_resources(session)
-        sg_df = pd.DataFrame(sg_map_data)
+        sg_map_df = pd.DataFrame(map_sg_to_resources(session))
+        sg_rules_df = pd.DataFrame(map_sg_rules_with_resources(session))
+        sg_summary_df = pd.DataFrame(map_sg_summary(session))
 
-        # Reorder: insert SG Mapping right after Security Groups
+        # Reorder: insert SG Mapping and others after Security Groups
         ordered_keys = []
         for key in dataframes.keys():
             ordered_keys.append(key)
             if key == "Security Groups":
-                ordered_keys.append("Security Groups Mapping")
+                ordered_keys.extend(["SG-Resource No Rules", "SG-Resource Rules", "Resource-SG-Rules"])
 
         ordered_dataframes = {}
         for key in ordered_keys:
-            if key == "Security Groups Mapping":
-                ordered_dataframes[key] = sg_df
+            if key == "Resource-SG-Rules":
+                ordered_dataframes[key] = sg_map_df
+            elif key == "SG-Resource Rules":
+                ordered_dataframes[key] = sg_rules_df
+            elif key == "SG-Resource No Rules":
+                ordered_dataframes[key] = sg_summary_df
             else:
                 ordered_dataframes[key] = dataframes[key]
 
@@ -87,7 +94,7 @@ def write_dataframes_to_excel_with_sg_map(dataframes, profile_name, session):
                 df.to_excel(writer, sheet_name=sheet_name, index=False)
 
         workbook_with_format(file_name_with_dir)
-        print(f"{profile_name} Inventory creation successful with SG Mapping => {file_name}")
+        print(f"{profile_name} Inventory creation successful with SG sheets => {file_name}")
     except Exception as e:
         print(f"Error writing data to Excel: {e}")
 
@@ -140,12 +147,10 @@ def single_inventory_maker(profile_name):
 
 def multi_inventory_maker(profile_names):
     print(f"### Total AWS Profiles: {len(profile_names)} ###")
-    # Get the number of CPU cores in the system
     num_cores = multiprocessing.cpu_count()
     print("This module simultaneously extract AWS profile inventories using the available number of cores.")
     print(f"Currently available number of CPU cores: {num_cores}")
 
-    # Perform multiprocessing based on profile names using Pool
     with multiprocessing.Pool(num_cores) as pool:
         pool.map(single_inventory_maker, profile_names)
 
@@ -160,31 +165,20 @@ def get_aws_profiles(aws_config_path):
         profiles = re.findall(r'\[profile (.*?)\]', config_content)
         return profiles
 
-# Function to extract data from Excel files
 def netrix_maker():
-    # List to store data
     data_list = []
-
-    # Iterate through all files in the directory
     for filename in os.listdir(temporary_path):
-        # Check if the filename matches the pattern
         if filename.endswith(".xlsx") and "_inventory_" in filename:
             try:
-                # Extract account name from filename
                 account_name = filename.split('_inventory_')[0].strip('[]')
-                # Load the Excel file
                 file_path = os.path.join(temporary_path, filename)
                 xls = pd.ExcelFile(file_path)
-                # Check if 'VPCs' sheet is in the file
                 if 'VPCs' in xls.sheet_names:
                     print(f"Processing file: {filename}")
-                    # Read 'VPCs' sheet
                     df = pd.read_excel(xls, sheet_name='VPCs')
-                    # Filter columns if required columns are present
                     if {'AWS ID', 'VPC Name', 'VPC ID', 'VPC CIDR', 'Total IPs', 'Available IPs'}.issubset(df.columns):
                         df_filtered = df[['AWS ID', 'VPC Name', 'VPC ID', 'VPC CIDR', 'Total IPs', 'Available IPs']].copy()
                         df_filtered.insert(0, 'Account Name', account_name)
-                        # Ensure AWS ID is treated as text
                         df_filtered['AWS ID'] = df_filtered['AWS ID'].astype(str)
                         data_list.append(df_filtered)
                     else:
@@ -194,7 +188,6 @@ def netrix_maker():
             except Exception as e:
                 print(f"Warning: Skipping file {filename} due to error: {e}")
 
-    # Concatenate all data and save to Excel
     if data_list:
         final_df = pd.concat(data_list, ignore_index=True)
         current_date = datetime.now().strftime('%y_%m_%d')
@@ -207,7 +200,6 @@ def netrix_maker():
         print("No data to save.")
 
 if __name__ == "__main__":
-    # Get AWS profile names
     profile_names = get_aws_profiles("~/.aws/config")
     if profile_names:
         multi_inventory_maker(profile_names)
