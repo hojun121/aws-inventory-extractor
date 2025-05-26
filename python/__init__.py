@@ -25,6 +25,7 @@ from modules.subnet import list_subnets
 from modules.tg import list_target_groups
 from modules.vpc import list_vpcs
 from botocore.exceptions import BotoCoreError, ClientError, ProfileNotFound, NoCredentialsError
+from modules.route53 import list_route53_zones, list_zone_record_sets, sanitize_sheet_name
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Alignment, PatternFill
@@ -98,6 +99,51 @@ def write_dataframes_to_excel_with_sg_map(dataframes, profile_name, session):
     except Exception as e:
         print(f"Error writing data to Excel: {e}")
 
+def write_route53_excel(session, profile_name):
+    try:
+        zones, summary_df = list_route53_zones(session)
+        current_date = datetime.now().strftime('%y_%m_%d')
+        file_name = f"{profile_name}_route53_{current_date}.xlsx"
+        file_path = os.path.join(temporary_path, file_name)
+        os.makedirs(temporary_path, exist_ok=True)
+
+        summary_df = summary_df.sort_values(by='Record count', ascending=False)
+
+        with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+            summary_df.to_excel(writer, sheet_name="Hosted Zones", index=False)
+            workbook = writer.book
+            summary_sheet = workbook["Hosted Zones"]
+
+            for row_idx, zone in enumerate(summary_df["Hosted zone name"], start=2):
+                sheet_target = sanitize_sheet_name(zone.rstrip('.'))
+                cell = summary_sheet.cell(row=row_idx, column=1)
+                cell.hyperlink = f"#{sheet_target}!A1"
+                cell.style = "Hyperlink"
+
+            for z in zones:
+                zone_name = z['Name'].rstrip('.')
+                sheet_name = sanitize_sheet_name(zone_name)
+                records_df = list_zone_record_sets(session, z['Id'])
+
+                records_df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+                sheet = writer.sheets[sheet_name]
+                row_count = records_df.shape[0] + 2  # 1(header) + data rows + 1(empty row)
+                column_count = len(records_df.columns)
+                end_col_letter = get_column_letter(column_count)
+
+                sheet.merge_cells(f"A{row_count}:{end_col_letter}{row_count}")
+                link_cell = sheet.cell(row=row_count, column=1)
+                link_cell.value = "Go to the Route53 summary"
+                link_cell.hyperlink = "#'Hosted Zones'!A1"
+                link_cell.style = "Hyperlink"
+                link_cell.fill = PatternFill(start_color='FFCCCC', end_color='FFCCCC', fill_type='solid')  
+
+        workbook_with_format(file_path)
+        print(f"{profile_name} Route53 created => {file_name}")
+    except Exception as e:
+        print(f"Error writing Route53 Excel: {e}")
+
 def list_all_resources(session, profile_name):
     resource_functions = [
         (list_vpcs, 'VPCs'),
@@ -142,6 +188,7 @@ def single_inventory_maker(profile_name):
     session = create_boto3_session(profile_name)
     if session:
         list_all_resources(session, profile_name)
+        write_route53_excel(session, profile_name)
     else:
         print(f"{profile_name} Session is something wrong..")
 
