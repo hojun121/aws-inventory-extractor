@@ -2,7 +2,9 @@ from flask import Flask, render_template, jsonify, request, send_file
 import boto3
 import re
 import os
-from datetime import datetime
+import json
+import subprocess
+from datetime import datetime, timezone
 from tempfile import NamedTemporaryFile
 import pandas as pd
 from openpyxl import load_workbook
@@ -30,15 +32,6 @@ from modules.route53 import list_route53_zones, list_zone_record_sets, sanitize_
 
 app = Flask(__name__)
 
-def get_aws_profiles(config_path="~/.aws/config"):
-    profiles = []
-    path = os.path.expanduser(config_path)
-    if os.path.exists(path):
-        with open(path, 'r') as f:
-            content = f.read()
-            profiles = re.findall(r'\[profile\s+([^\]]+)\]', content)
-    return profiles
-
 RESOURCE_MAP = {
     "vpcs": list_vpcs,
     "subnets": list_subnets,
@@ -55,6 +48,112 @@ RESOURCE_MAP = {
     "elasticache": list_elasticache_clusters,
     "msk": list_kafka_clusters
 }
+
+def get_aws_profiles(config_path="~/.aws/config"):
+    profiles = []
+    path = os.path.expanduser(config_path)
+    if os.path.exists(path):
+        with open(path, 'r') as f:
+            content = f.read()
+            profiles = re.findall(r'\[profile\s+([^\]]+)\]', content)
+    return profiles
+
+def has_valid_sso_token():
+    cache_dir = os.path.expanduser("~/.aws/sso/cache")
+    if not os.path.isdir(cache_dir):
+        return False
+
+    for filename in os.listdir(cache_dir):
+        file_path = os.path.join(cache_dir, filename)
+        try:
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+
+                # expiresAt이 없으면 스킵
+                if "expiresAt" not in data:
+                    continue
+
+                # 시간 비교 (UTC)
+                expires = datetime.fromisoformat(data["expiresAt"].replace("Z", "+00:00"))
+                if expires > datetime.now(timezone.utc):
+                    return True  # 유효한 SSO 토큰 있음
+        except Exception as e:
+            continue
+
+    return False  # 유효한 토큰 없음
+
+@app.route('/')
+def index():
+    profiles = get_aws_profiles()
+    sso_required = not has_valid_sso_token()
+    return render_template('index.html', resource_keys=list(RESOURCE_MAP.keys()), profile_list=profiles, sso_login_required=sso_required)
+
+@app.route('/sso-login', methods=['POST'])
+def sso_login():
+    try:
+        proc = subprocess.Popen(
+            ["aws", "sso", "login", "--sso-session", "hanwhavision"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+
+        login_url = None
+        user_code = None
+
+        for line in iter(proc.stdout.readline, ''):
+            if "https://" in line and "device" in line:
+                login_url = re.search(r"(https://[^\s]+)", line)
+                if login_url:
+                    login_url = login_url.group(1)
+            if re.match(r"^[A-Z0-9]{4}-[A-Z0-9]{4}$", line.strip()):
+                user_code = line.strip()
+            if login_url and user_code:
+                break
+
+        return jsonify({
+            "login_url": login_url,
+            "user_code": user_code
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/check-sso')
+def check_sso():
+    return jsonify({"ok": has_sso_token("hanwhavision")})
+
+@app.route('/logout-sso', methods=['POST'])
+def logout_sso():
+    try:
+        cache_dir = os.path.expanduser("~/.aws/sso/cache")
+        if os.path.isdir(cache_dir):
+            for filename in os.listdir(cache_dir):
+                file_path = os.path.join(cache_dir, filename)
+                try:
+                    os.remove(file_path)
+                except Exception as e:
+                    print(f"Failed to delete {file_path}: {e}")
+        return jsonify({"message": "SSO token cleared"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/<resource>')
+def get_resource(resource):
+    if resource not in RESOURCE_MAP:
+        return jsonify({"error": "Unsupported resource"}), 404
+
+    profile = request.args.get("profile", "sightmind-prod")
+    try:
+        session = boto3.Session(profile_name=profile)
+        result = RESOURCE_MAP[resource](session)
+        if not result:
+            return jsonify({"columns": [], "rows": []})
+
+        columns = list(result[0].keys())
+        rows = [list(item.values()) for item in result]
+        return jsonify({"columns": columns, "rows": rows})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 def save_excel_with_format(sheet_dict, filename):
     with pd.ExcelWriter(filename, engine='openpyxl') as writer:
@@ -74,29 +173,6 @@ def save_excel_with_format(sheet_dict, filename):
             for cell in col:
                 cell.alignment = Alignment(horizontal='center', vertical='center')
     wb.save(filename)
-
-@app.route('/')
-def index():
-    profiles = get_aws_profiles()
-    return render_template('index.html', resource_keys=list(RESOURCE_MAP.keys()), profile_list=profiles)
-
-@app.route('/api/<resource>')
-def get_resource(resource):
-    if resource not in RESOURCE_MAP:
-        return jsonify({"error": "Unsupported resource"}), 404
-
-    profile = request.args.get("profile", "sightmind-prod")
-    try:
-        session = boto3.Session(profile_name=profile)
-        result = RESOURCE_MAP[resource](session)
-        if not result:
-            return jsonify({"columns": [], "rows": []})
-
-        columns = list(result[0].keys())
-        rows = [list(item.values()) for item in result]
-        return jsonify({"columns": columns, "rows": rows})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 @app.route('/download/overall')
 def download_overall():
