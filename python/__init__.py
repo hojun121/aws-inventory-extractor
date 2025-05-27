@@ -159,8 +159,7 @@ def list_all_resources(session, profile_name):
         (list_iam_roles, 'IAM Roles'),
         (list_db_clusters, 'Database'),
         (list_elasticache_clusters, 'ElastiCache'),
-        (list_kafka_clusters, 'MSK'),
-        (list_target_groups, 'Target Groups')
+        (list_kafka_clusters, 'MSK')
     ]
 
     dataframes = {}
