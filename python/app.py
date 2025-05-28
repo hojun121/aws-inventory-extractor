@@ -149,7 +149,7 @@ def get_resource(resource):
         result = RESOURCE_MAP[resource](session)
         if not result:
             return jsonify({"columns": [], "rows": []})
-
+        
         columns = list(result[0].keys())
         rows = [list(item.values()) for item in result]
         return jsonify({"columns": columns, "rows": rows})
@@ -242,6 +242,85 @@ def download_sg_detail():
                 "SG-Resource Rules": pd.DataFrame(map_sg_rules_with_resources(session)),
                 "Resource-SG-Rules": pd.DataFrame(map_sg_to_resources(session))
             }
+            save_excel_with_format(sheet_dict, tmp.name)
+            return send_file(tmp.name, download_name=file_name, as_attachment=True)
+
+    except Exception as e:
+        return str(e), 500
+
+@app.route('/download/sg_report')
+def download_sg_report():
+    profile = request.args.get("profile")
+    if not profile:
+        return "Profile is required", 400
+
+    try:
+        session = boto3.Session(profile_name=profile)
+        sg_data = map_sg_rules_with_resources(session)
+        if not sg_data:
+            return "No SG data available", 404
+
+        df = pd.DataFrame(sg_data)
+
+        def analyze_sg(row):
+            findings = []
+            direction = row.get("Direction", "")
+            port = str(row.get("Port Range", ""))
+            source = str(row.get("Src Origin", ""))
+            destination = str(row.get("Des Origin", ""))
+            protocol = str(row.get("Protocol", "")).lower()
+            sg_id = row.get("Security Group ID", "")
+
+            # Rule 1: overly open to 0.0.0.0/0
+            if direction == "Inbound" and source == "0.0.0.0/0" and (
+                re.search(r"^22$|^22[-:]", port) or protocol == "all"
+            ):
+                findings.append("Inbound 0.0.0.0/0 open (22/ALL)")
+
+            if direction == "Outbound" and destination == "0.0.0.0/0" and protocol == "all":
+                findings.append("Outbound 0.0.0.0/0 open (ALL)")
+
+            # Rule 2: unused SG
+            if str(row.get("Usage", "")).strip().upper() == "FALSE":
+                findings.append("Unused SG")
+
+            # Rule 3: SG reference mismatch
+            is_sg_source = source.startswith("sg-")
+            is_sg_dest = destination.startswith("sg-")
+
+            if direction == "Outbound" and is_sg_dest and not (
+                ((df["Security Group ID"] == destination) &
+                 (df["Direction"] == "Inbound") &
+                 (df["Src Origin"] == sg_id)).any()
+            ):
+                findings.append("Outbound references SG but no matching inbound")
+
+            if direction == "Inbound" and is_sg_source and not (
+                ((df["Security Group ID"] == source) &
+                 (df["Direction"] == "Outbound") &
+                 (df["Des Origin"] == sg_id)).any()
+            ):
+                findings.append("Inbound references SG but no matching outbound")
+
+            return ", ".join(findings)
+
+        df["Findings"] = df.apply(analyze_sg, axis=1)
+        df_filtered = df[df["Findings"] != ""]
+        columns_to_drop = [
+            "Usage", "Region", "Src Origin", "Des Origin", 
+            "Resource Name", "Resource ID", "Resource Type", 
+            "ENI ID", "Private IP"
+        ]
+        df_filtered = df_filtered.drop(columns=[col for col in columns_to_drop if col in df_filtered.columns])
+        df_filtered = df_filtered.drop_duplicates()
+        cols = df_filtered.columns.tolist()
+        if "Findings" in cols:
+            cols.insert(0, cols.pop(cols.index("Findings")))
+            df_filtered = df_filtered[cols]
+
+        file_name = f"{profile}_sg_findings_{datetime.now().strftime('%y_%m_%d')}.xlsx"
+        with NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+            sheet_dict = {"SG Findings": df_filtered}
             save_excel_with_format(sheet_dict, tmp.name)
             return send_file(tmp.name, download_name=file_name, as_attachment=True)
 
