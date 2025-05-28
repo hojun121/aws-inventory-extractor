@@ -92,7 +92,8 @@ def index():
 def sso_login():
     try:
         proc = subprocess.Popen(
-            ["aws", "sso", "login", "--sso-session", "hanwhavision", "--use-device"],
+            # ["aws", "sso", "login", "--sso-session", "hanwhavision", "--use-device"],
+            ["aws", "sso", "login", "--sso-session", "hanwhavision"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True
