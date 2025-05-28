@@ -187,7 +187,10 @@
         dataTableInstance = table.DataTable({
           dom: 'Bfrtip',
           buttons: ['colvis'],
-          pageLength: 30,
+          paging: false,      
+          info: false,            
+          scrollY: '600px',      
+          scrollCollapse: true,
           initComplete: function () {
             this.api().columns().every(function () {
               const column = this;
