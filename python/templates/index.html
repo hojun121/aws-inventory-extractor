@@ -107,6 +107,7 @@
             </div>
       
             <button id="theme-toggle" class="btn btn-outline-secondary">Toggle Theme</button>
+            <button id="refresh-btn" class="btn btn-outline-primary">🔄 Refresh</button>
           </div>
         </div>
       </div>
@@ -233,15 +234,6 @@
       }
     }
 
-    function startAutoRefresh(resource) {
-      if (currentInterval) clearInterval(currentInterval);
-      currentInterval = setInterval(() => {
-        if (currentResource === resource) {
-          fetchResourceData(resource);
-        }
-      }, 60000);
-    }
-
     document.addEventListener('DOMContentLoaded', () => {
       const tabs = document.querySelectorAll('[data-resource]');
       tabs.forEach(tab => {
@@ -249,7 +241,6 @@
           const resource = tab.getAttribute('data-resource');
           currentResource = resource;
           fetchResourceData(resource);
-          startAutoRefresh(resource);
         });
       });
 
@@ -348,6 +339,9 @@
         if (!confirmed) return;
         await fetch('/logout-sso', { method: 'POST' });
         alert("로그아웃 완료. 페이지를 새로고침 해주세요.");
+      });
+      document.getElementById('refresh-btn').addEventListener('click', () => {
+        if (currentResource) fetchResourceData(currentResource);
       });
     });
   </script>
