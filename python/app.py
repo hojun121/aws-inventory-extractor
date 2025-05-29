@@ -7,10 +7,10 @@ import subprocess
 from datetime import datetime, timezone
 from tempfile import NamedTemporaryFile
 import pandas as pd
-from openpyxl import load_workbook
-from openpyxl.styles import Alignment, PatternFill
+from openpyxl.worksheet.table import Table, TableStyleInfo
+from openpyxl.styles import PatternFill, Alignment
 from openpyxl.utils import get_column_letter
-
+from openpyxl import load_workbook
 from modules.vpc import list_vpcs
 from modules.subnet import list_subnets
 from modules.sg import list_security_groups
@@ -29,6 +29,7 @@ from modules.sg_resource_mapper import map_sg_to_resources
 from modules.sg_centric_rules import map_sg_rules_with_resources
 from modules.sg_summary import map_sg_summary
 from modules.route53 import list_route53_zones, list_zone_record_sets, sanitize_sheet_name
+from openpyxl.worksheet.table import Table, TableStyleInfo
 
 app = Flask(__name__)
 
@@ -173,6 +174,16 @@ def save_excel_with_format(sheet_dict, filename):
             ws.column_dimensions[get_column_letter(col[0].column)].width = max_length
             for cell in col:
                 cell.alignment = Alignment(horizontal='center', vertical='center')
+
+        # 필터 및 테이블 스타일 추가
+        if ws.max_row > 1 and ws.max_column > 0:
+            table_range = f"A1:{get_column_letter(ws.max_column)}{ws.max_row}"
+            table = Table(displayName="Table1", ref=table_range)
+            style = TableStyleInfo(name="TableStyleMedium9", showFirstColumn=False,
+                                   showLastColumn=False, showRowStripes=False, showColumnStripes=False)
+            table.tableStyleInfo = style
+            ws.add_table(table)
+
     wb.save(filename)
 
 @app.route('/download/overall')
@@ -267,10 +278,16 @@ def download_sg_report():
             direction = row.get("Direction", "")
             port = str(row.get("Port Range", ""))
             source = str(row.get("Src Origin", ""))
+            source_name = str(row.get("Src Parsed", ""))
             destination = str(row.get("Des Origin", ""))
+            destination_name = str(row.get("Des Parsed", ""))
             protocol = str(row.get("Protocol", "")).lower()
             sg_id = row.get("Security Group ID", "")
 
+            is_sg_source = source.startswith("sg-")
+            is_sg_dest = destination.startswith("sg-")
+
+            
             # Rule 1: overly open to 0.0.0.0/0
             if direction == "Inbound" and source == "0.0.0.0/0" and (
                 re.search(r"^22$|^22[-:]", port) or protocol == "all"
@@ -285,24 +302,46 @@ def download_sg_report():
                 findings.append("Unused SG")
 
             # Rule 3: SG reference mismatch
-            is_sg_source = source.startswith("sg-")
-            is_sg_dest = destination.startswith("sg-")
+            # --- Outbound: referencing a destination SG ---
+            if direction == "Outbound" and is_sg_dest:
+                matched_inbound = (
+                    (df["Security Group ID"] == destination) &
+                    (df["Direction"] == "Inbound") &
+                    (df["Src Origin"] == sg_id)
+                )
+                if not matched_inbound.any():
+                    # Check if target SG is just open to 0.0.0.0/0
+                    open_inbound = (
+                        (df["Security Group ID"] == destination) &
+                        (df["Direction"] == "Inbound") &
+                        (df["Src Origin"] == "0.0.0.0/0")
+                    )
+                    if open_inbound.any():
+                        findings.append(f"Outbound references {destination_name} but no matching inbound (note: {destination_name} open to 0.0.0.0/0)")
+                    else:
+                        findings.append(f"Outbound references {destination_name} but no matching inbound")
 
-            if direction == "Outbound" and is_sg_dest and not (
-                ((df["Security Group ID"] == destination) &
-                 (df["Direction"] == "Inbound") &
-                 (df["Src Origin"] == sg_id)).any()
-            ):
-                findings.append("Outbound references SG but no matching inbound")
-
-            if direction == "Inbound" and is_sg_source and not (
-                ((df["Security Group ID"] == source) &
-                 (df["Direction"] == "Outbound") &
-                 (df["Des Origin"] == sg_id)).any()
-            ):
-                findings.append("Inbound references SG but no matching outbound")
+            # --- Inbound: referencing a source SG ---
+            if direction == "Inbound" and is_sg_source:
+                matched_outbound = (
+                    (df["Security Group ID"] == source) &
+                    (df["Direction"] == "Outbound") &
+                    (df["Des Origin"] == sg_id)
+                )
+                if not matched_outbound.any():
+                    # Check if source SG is open to 0.0.0.0/0
+                    open_outbound = (
+                        (df["Security Group ID"] == source) &
+                        (df["Direction"] == "Outbound") &
+                        (df["Des Origin"] == "0.0.0.0/0")
+                    )
+                    if open_outbound.any():
+                        findings.append(f"Inbound references {source_name} but no matching outbound (note: {source_name} open to 0.0.0.0/0)")
+                    else:
+                        findings.append(f"Inbound references {source_name} but no matching outbound")
 
             return ", ".join(findings)
+
 
         df["Findings"] = df.apply(analyze_sg, axis=1)
         df_filtered = df[df["Findings"] != ""]
