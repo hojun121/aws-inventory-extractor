@@ -348,7 +348,7 @@ def download_sg_report():
         columns_to_drop = [
             "Usage", "Region", "Src Origin", "Des Origin", 
             "Resource Name", "Resource ID", "Resource Type", 
-            "ENI ID", "Private IP"
+            "ENI ID", "Private IP", "Security Group ID", "SG Description"
         ]
         df_filtered = df_filtered.drop(columns=[col for col in columns_to_drop if col in df_filtered.columns])
         df_filtered = df_filtered.drop_duplicates()
