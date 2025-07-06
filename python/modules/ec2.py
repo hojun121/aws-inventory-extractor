@@ -1,10 +1,22 @@
 from modules.common import exponential_backoff
 
-def list_ec2_instances(session, region, profile_name, account_id):
+def list_ec2_instances(session):
     ec2_data = []
+
     try:
-        ec2_client = session.client('ec2', region_name=region)
-        ssm_client = session.client('ssm', region_name=region)
+        # 기본 region 가져오기
+        region = session.region_name or session.client('ec2').meta.region_name
+
+        # account_id 가져오기
+        sts_client = session.client('sts')
+        account_id = sts_client.get_caller_identity().get('Account', '-')
+
+        # profile_name 은 session 객체에는 없어서 외부에서 설정하거나 생략
+        profile_name = session.profile_name if hasattr(session, 'profile_name') else '-'
+
+        ec2_client = session.client('ec2')
+        ssm_client = session.client('ssm')
+
         instances = ec2_client.describe_instances()
 
         for reservation in instances.get('Reservations', []):
@@ -81,5 +93,6 @@ def list_ec2_instances(session, region, profile_name, account_id):
                     'Tags': tags_parsed
                 })
     except Exception as e:
-        print(f"Error retrieving EC2 instances in {region}: {e}")
+        print(f"Error retrieving EC2 instances: {e}")
+
     return ec2_data

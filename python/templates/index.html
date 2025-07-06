@@ -1,3 +1,5 @@
+
+{% if sso_valid %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -80,34 +82,29 @@
           <h2 class="mb-0 fw-semibold text-primary">Hanwha CloudOps Team AWS Inventory</h2>
       
           <div class="d-flex align-items-center gap-3">
-            {% if sso_login_required %}
-            <button id="sso-login" class="btn btn-primary">SSO 로그인</button>
-            {% endif %}
-      
-            {% if not sso_login_required %}
-            <button id="sso-logout" class="btn btn-outline-danger">Logout</button>
-            {% endif %}
-      
-            <label for="profile-select" class="me-2 mb-0">Select Profile:</label>
+            <label for="profile-select" class="me-2 mb-0">Available Profile List (Total {{ profile_len }}) :</label>
             <select id="profile-select" class="form-select w-auto">
               {% for profile in profile_list %}
               <option value="{{ profile }}">{{ profile }}</option>
               {% endfor %}
             </select>
-      
+            
+            <label for="region-select" class="me-2 mb-0">Region :</label>
+            <select id="region-select" class="form-select w-auto">
+              {% for region in region_list %}
+              <option value="{{ region }}">{{ region }}</option>
+              {% endfor %}
+            </select>
+
             <div class="dropdown">
               <button class="btn btn-warning dropdown-toggle" type="button" id="downloadDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                 Excel Download
               </button>
               <ul class="dropdown-menu" aria-labelledby="downloadDropdown">
-                <li><a class="dropdown-item" href="#" onclick="downloadExcel('overall')">📄 Overall Inventory</a></li>
-                <li><a class="dropdown-item" href="#" onclick="downloadExcel('sg')">🔐 SG Detail</a></li>
-                <li><a class="dropdown-item" href="#" onclick="downloadExcel('sg_report')">🔐 SG Inspection</a></li>
-                <li><a class="dropdown-item" href="#" onclick="downloadExcel('route53')">🌐 Route53 Detail</a></li>
+                <li><a class="dropdown-item" href="#" onclick="downloadExcel('overall')">📄 Download Inventory Files</a></li>
               </ul>
             </div>
       
-            <button id="theme-toggle" class="btn btn-outline-secondary">Toggle Theme</button>
             <button id="refresh-btn" class="btn btn-outline-primary">🔄 Refresh</button>
           </div>
         </div>
@@ -133,21 +130,6 @@
       </table>
     </div>
   </div>
-  <div class="modal fade" id="ssoModal" tabindex="-1" aria-labelledby="ssoModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title" id="ssoModalLabel">SSO 로그인 안내</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-        </div>
-        <div class="modal-body">
-          <p>아래 링크를 클릭하여 로그인 후 코드를 입력해주세요:</p>
-          <p><strong>URL:</strong><br><a id="sso-url" href="#" target="_blank" class="text-break text-primary"></a></p>
-          <p><strong>코드:</strong><br><span id="sso-code" class="text-primary fw-bold"></span></p>
-        </div>
-      </div>
-    </div>
-  </div>
   <script>
     let currentInterval = null;
     let currentResource = null;
@@ -156,19 +138,27 @@
     async function fetchResourceData(resource) {
       const status = document.getElementById('status');
       const profile = document.getElementById('profile-select').value;
+      const region = document.getElementById('region-select').value;
 
       status.className = '';
-      status.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Loading ${resource} from ${profile}...`;
+      status.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>Loading ${resource} from ${profile} / ${region}...`;
 
       try {
-        const res = await axios.get(`/api/${resource}?profile=${profile}`);
+        const res = await axios.get(`/api/${resource}?profile=${profile}&region=${region}`);
         const { columns, rows } = res.data;
 
         const table = $('#datatable');
         const thead = $('#table-head');
         const tbody = $('#table-body');
 
-        if (!Array.isArray(rows) || rows.length === 0) {
+        if (!columns || columns.length === 0 || !Array.isArray(rows) || rows.length === 0) {
+          // DataTable 제거 (있을 때만)
+          if (dataTableInstance) {
+            dataTableInstance.clear().draw();
+            dataTableInstance.destroy();
+            dataTableInstance = null;
+          }
+
           thead.empty();
           tbody.empty();
           status.innerText = `No data found for ${resource}.`;
@@ -205,17 +195,17 @@
 
               $(column.header()).append(select);
 
-              // Select2 적용
-              setTimeout(() => {
+              try {
                 $(select).select2({
                   width: '100%',
                   placeholder: "All",
                   allowClear: true,
                   minimumResultsForSearch: 0
                 });
-              }, 10);
+              } catch (e) {
+                console.warn('Select2 init failed:', e);
+              }
 
-              // Select2 필터 적용 이벤트
               $(select).on("change", function () {
                 const val = $(this).val();
                 column.search(this.value || '', false, true).draw();
@@ -225,7 +215,7 @@
         });
 
         status.className = 'loaded';
-        status.textContent = `Showing ${resource.replace('-', ' ')} from ${profile} (${rows.length} items) @ ${new Date().toLocaleTimeString()}`;
+        status.textContent = `Showing ${resource.replace('-', ' ')} from ${profile} / ${region} (${rows.length} items) @ ${new Date().toLocaleTimeString()}`;
       } catch (err) {
         $('#table-head').empty();
         $('#table-body').empty();
@@ -235,31 +225,6 @@
       }
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
-      const tabs = document.querySelectorAll('[data-resource]');
-      tabs.forEach(tab => {
-        tab.addEventListener('click', () => {
-          const resource = tab.getAttribute('data-resource');
-          currentResource = resource;
-          fetchResourceData(resource);
-        });
-      });
-
-      document.getElementById('profile-select').addEventListener('change', () => {
-        if (currentResource) fetchResourceData(currentResource);
-      });
-
-      document.getElementById('theme-toggle').addEventListener('click', () => {
-        document.body.classList.toggle('dark-mode');
-      });
-
-      if (tabs.length > 0) {
-        const firstResource = tabs[0].getAttribute('data-resource');
-        currentResource = firstResource;
-        fetchResourceData(firstResource);
-        startAutoRefresh(firstResource);
-      }
-    });
     function downloadExcel(type) {
         const profile = document.getElementById('profile-select').value;
         if (!profile) return;
@@ -311,36 +276,32 @@
         newWindow.location.href = url;
     }
 
+    
     document.addEventListener('DOMContentLoaded', () => {
-      const loginBtn = document.getElementById('sso-login');
-      const logoutBtn = document.getElementById('sso-logout');
-
-      if (loginBtn) {
-        loginBtn.addEventListener('click', async () => {
-            try {
-                const res = await fetch('/sso-login', { method: 'POST' });
-                const data = await res.json();
-                if (data.login_url && data.user_code) {
-                document.getElementById("sso-url").textContent = data.login_url;
-                document.getElementById("sso-url").href = data.login_url;
-                document.getElementById("sso-code").textContent = data.user_code;
-                new bootstrap.Modal(document.getElementById('ssoModal')).show();
-                } else {
-                alert("SSO 인증 정보를 가져오지 못했습니다.");
-                }
-            } catch (e) {
-                console.error("요청 실패:", e);
-                alert("요청 실패: 콘솔을 확인하세요.");
-            }
+      const tabs = document.querySelectorAll('[data-resource]');
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          const resource = tab.getAttribute('data-resource');
+          currentResource = resource;
+          fetchResourceData(resource);
         });
+      });
+
+      document.getElementById('profile-select').addEventListener('change', () => {
+        document.getElementById('region-select').value = 'us-east-1';
+        if (currentResource) fetchResourceData(currentResource);
+      });
+
+      document.getElementById('region-select').addEventListener('change', () => {
+          if (currentResource) fetchResourceData(currentResource);
+      });
+
+      if (tabs.length > 0) {
+        const firstResource = tabs[0].getAttribute('data-resource');
+        currentResource = firstResource;
+        fetchResourceData(firstResource);
       }
 
-      logoutBtn.addEventListener('click', async () => {
-        const confirmed = confirm("SSO 로그아웃 하시겠습니까?");
-        if (!confirmed) return;
-        await fetch('/logout-sso', { method: 'POST' });
-        alert("로그아웃 완료. 페이지를 새로고침 해주세요.");
-      });
       document.getElementById('refresh-btn').addEventListener('click', () => {
         if (currentResource) fetchResourceData(currentResource);
       });
@@ -348,3 +309,8 @@
   </script>
 </body>
 </html>
+{% else %}
+<script>
+  alert("AWS SSO Login is required. Please login first.");
+</script>
+{% endif %}
