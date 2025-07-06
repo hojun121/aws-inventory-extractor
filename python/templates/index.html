@@ -82,7 +82,7 @@
           <h2 class="mb-0 fw-semibold text-primary">Hanwha CloudOps Team AWS Inventory</h2>
       
           <div class="d-flex align-items-center gap-3">
-            <label for="profile-select" class="me-2 mb-0">Available Profile List (Total {{ profile_len }}) :</label>
+            <label for="profile-select" class="me-2 mb-0">Profile List (Total {{ profile_len }}) :</label>
             <select id="profile-select" class="form-select w-auto">
               {% for profile in profile_list %}
               <option value="{{ profile }}">{{ profile }}</option>
@@ -96,16 +96,18 @@
               {% endfor %}
             </select>
 
+            <button id="refresh-btn" class="btn btn-outline-primary">🔄 Refresh</button>
+
             <div class="dropdown">
               <button class="btn btn-warning dropdown-toggle" type="button" id="downloadDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                Excel Download
+                Download Inventory
               </button>
               <ul class="dropdown-menu" aria-labelledby="downloadDropdown">
-                <li><a class="dropdown-item" href="#" onclick="downloadExcel('overall')">📄 Download Inventory Files</a></li>
+                <li><a class="dropdown-item" href="#" onclick="downloadExcel('selected')">🧾 <span id="download-region">-</span> Only</a></li>
+                <li><a class="dropdown-item" href="#" onclick="downloadExcel('overall')">📋 All Region</a></li>
               </ul>
             </div>
-      
-            <button id="refresh-btn" class="btn btn-outline-primary">🔄 Refresh</button>
+            
           </div>
         </div>
       </div>
@@ -115,7 +117,7 @@
     <li class="nav-item" role="presentation">
       <button class="nav-link {% if loop.first %}active{% endif %}" id="{{ key }}-tab"
               data-bs-toggle="tab" data-resource="{{ key }}" type="button" role="tab">
-        {{ key.replace('-', ' ').title() }}
+        {{ key.replace('-', ' ').lower() }}
       </button>
     </li>
     {% endfor %}
@@ -131,6 +133,15 @@
     </div>
   </div>
   <script>
+    function updateDownloadLabels() {
+      const region = document.getElementById('region-select').value;
+
+      document.getElementById('download-region').innerText = region;
+    }
+
+    document.getElementById('region-select').addEventListener('change', updateDownloadLabels);
+
+    document.addEventListener('DOMContentLoaded', updateDownloadLabels);
     let currentInterval = null;
     let currentResource = null;
     let dataTableInstance = null;
@@ -268,14 +279,13 @@
         <body>
             <div class="container">
             <div class="spinner"></div>
-            <p>Generating your Excel file...</p>
+            <p>Generating Excel files...</p>
             </div>
         </body></html>
         `);
         newWindow.document.close();
         newWindow.location.href = url;
     }
-
     
     document.addEventListener('DOMContentLoaded', () => {
       const tabs = document.querySelectorAll('[data-resource]');

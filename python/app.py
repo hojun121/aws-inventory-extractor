@@ -29,7 +29,17 @@ from modules.msk import list_kafka_clusters
 from modules.sg_resource_mapper import map_sg_to_resources
 from modules.sg_centric_rules import map_sg_rules_with_resources
 from modules.sg_summary import map_sg_summary
-from modules.route53 import list_route53_zones, list_zone_record_sets, sanitize_sheet_name
+from modules.route53 import list_route53_zones, list_zone_record_sets, sanitize_sheet_name, list_route53
+from modules.opensearch import list_opensearch_clusters
+from modules.dynamodb import list_dynamodb_tables
+from modules.eks import list_eks_clusters
+from modules.acm import list_acm_certificates
+from modules.kms import list_kms_keys
+from modules.secrets_manager import list_secrets_manager
+from modules.sqs import list_sqs_queues
+from modules.ses import list_ses_identities
+from modules.sns import list_sns_topics
+from modules.lamda import list_lambda_functions
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
 app = Flask(__name__)
@@ -40,15 +50,25 @@ RESOURCE_MAP = {
     "security-groups": list_security_groups,
     "nacl": list_nacls,
     "ec2": list_ec2_instances,
+    "eks": list_eks_clusters,
     "asg": list_auto_scaling_groups,
     "elbs": list_elbs,
     "target-groups": list_target_groups,
+    "database": list_db_clusters,
+    "dynamodb": list_dynamodb_tables,
+    "elasticache": list_elasticache_clusters,
+    "msk": list_kafka_clusters,
+    "opensearch": list_opensearch_clusters,
+    "route53": list_route53,
     "cloudfront": list_cloudfront_distributions,
     "s3": list_s3_buckets,
-    "iam-roles": list_iam_roles,
-    "database": list_db_clusters,
-    "elasticache": list_elasticache_clusters,
-    "msk": list_kafka_clusters
+    "lamda": list_lambda_functions,
+    "acm": list_acm_certificates,
+    "kms": list_kms_keys,
+    "secrets-manager": list_secrets_manager,
+    "sqs": list_sqs_queues,
+    "ses": list_ses_identities,
+    "sns": list_sns_topics
 }
 
 REGION_LIST = [
@@ -172,7 +192,7 @@ def index():
                             profile_len=len(profiles),
                             sso_valid=has_valid_sso_token(),
                             region_list=REGION_LIST,
-                            )
+                        )
 
 @app.route('/api/<resource>')
 def get_resource(resource):

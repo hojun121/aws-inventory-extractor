@@ -42,3 +42,48 @@ def list_zone_record_sets(session, zone_id):
                 "Evaluate target health": record.get('AliasTarget', {}).get('EvaluateTargetHealth', '-') if alias else '-'
             })
     return pd.DataFrame(records)
+
+def list_route53(session):
+    zones, _ = list_route53_zones(session)
+    result = []
+
+    for z in zones:
+        zone_id = z['Id'].split('/')[-1]
+        zone_name = z['Name']
+        zone_type = "Private" if z['Config']['PrivateZone'] else "Public"
+        record_count = z.get('ResourceRecordSetCount', '-')
+        description = z['Config'].get('Comment', '-')
+
+        # Add zone summary as a resource
+        result.append({
+            "Zone Name": zone_name,
+            "Zone ID": zone_id,
+            "Zone Type": zone_type,
+            "Record Count": record_count,
+            "Description": description,
+            "Record Name": "-",
+            "Record Type": "-",
+            "Record Value": "-",
+            "TTL": "-",
+            "Alias": "-",
+            "Evaluate Target Health": "-"
+        })
+
+        # Add each record as a resource
+        records_df = list_zone_record_sets(session, zone_id)
+        for _, row in records_df.iterrows():
+            result.append({
+                "Zone Name": zone_name,
+                "Zone ID": zone_id,
+                "Zone Type": zone_type,
+                "Record Count": record_count,
+                "Description": description,
+                "Record Name": row["Record name"],
+                "Record Type": row["Type"],
+                "Record Value": row["Value / Route traffic to"],
+                "TTL": row["TTL (seconds)"],
+                "Alias": row["Alias"],
+                "Evaluate Target Health": row["Evaluate target health"]
+            })
+
+    return result
