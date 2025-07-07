@@ -1,102 +1,103 @@
 # AWS Resource Inventory Extractor
 
-A module that uses awscli to extract AWS resources and export them to a structured inventory file.
+- A Module that uses AWSCLI to Extract AWS Resources and Export Them to a Structured Inventory Files.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/08ed8337-916c-4ae7-8c1c-66d26ff85329" alt="AWS Resource Inventory Extractor">
 </p>
 
-
 ## Tech Stack
 - AWSCLI Latest
-- Python (In-house developed code)
+- Python 3.10
+- Ubuntu 22.04
 
 ## Pre-requirements
 - 2 vCPU / 8 RAM
 - Docker Version >= v24.0.2
-- IAM or SSO Auth: Read-Only Permissions (to security)
+- SSO Auth: Read-Only Permissions (to security)
 
-## Currently Extractable Items
+## Currently Extractable 3 Items
+
+- ( 1 / 3 ) Inventory file
+
+  ```
+  Virtual Private Cloud (VPC)
+  Subnet
+  Elastic Kubernetes Service (EKS)
+  Auto Scaling Group (ASG)
+  Elastic Compute Cloud (EC2)
+  Security Group
+  Network ACL (NACL)
+  Elastic Load Balancer (ELB)
+  Load Balancer Target Group
+  Relational Database Service (RDS)
+  DynamoDB
+  ElastiCache
+  Managed Streaming for Apache Kafka (MSK)
+  OpenSearch Service
+  Route 53
+  CloudFront
+  Simple Storage Service (S3)
+  Lambda
+  Certificate Manager (ACM)
+  Key Management Service (KMS)
+  Secrets Manager
+  Simple Queue Service (SQS)
+  Simple Email Service (SES)
+  Simple Notification Service (SNS)
+  
+  ```
+- ( 2 / 3 ) Security Group Detailed Analysis File
+- ( 3 / 3 ) Route53 Detailed Analysis File
 
 For additional items, please send a request to jaeho.p@hanwha.com
 
-```
-  - VPC, VPC Endpoint, Peering Connection
-  - Transit Gateway
-  - Subnet
-  - Security Groups
-  - Network ACLs
-  - EC2
-  - ELB
-  - Target Group
-  - Auto Scaling
-  - ElastiCache
-  - CloudFront
-  - S3
-  - IAM Group, Role, User
-  - RDS, DocumentDB
-  - MSK
-```
+## Usage Guide
 
-## Usage Detail Guide
+### [ 1 / 3 ] Run the Container in One of Two Ways.
 
-### You can run the module using a container.
-
-#### Container Image Build
+#### Container Run (or Build and Run the Image Manually)
 ```bash
-docker build -t {{imageName}} .
+docker run -it --name hanwha_inventory -p 5000:5000 hojun121/hanwha_inventory:v2.0.0
 ```
-#### Container Run
 ```bash
-docker run --rm -it -v {{Your Host Directory}}:/app/inventory {{imageName}}
+docker build -t {{imageName}} . && docker run -it --name {{container_name}} -p 5000:5000 {{imageName}}
 ```
 
-### [ 1 / 2 ] Authenticate with AWS using awscli: IAM or SSO.
+### [ 2 / 3 ] After Starting the Container, Generate the SSO Session Metadata, Login
 
-- IAM Login
-  - Input the below data to IAM login.
-    ```
-    AWS Access Key ID : (Your IAM user's Access Key ID here.)
-    AWS Secret Access Key : (Your IAM user's Secret Access Key here.)
-    Default region name : (Your Project Region)
-    Default output format :json 
-    ```
-
-- SSO Login
-  - Input the below data to SSO login.
-    ```
-    SSO session name (hanwhavision): (Your SSO Session Name, Default: hanwhavision)
-    SSO start URL [https://htaic.awsapps.com/start]: (Your SSO URL, Default: https://htaic.awsapps.com/start)
-    SSO region [us-west-2]: (Your SSO Region, Default: us-west-2)
-    ```
-  - Open the following URL and enter the given code.
-    
-    ![image](https://github.com/user-attachments/assets/ade9aa67-a885-4117-ad52-375ae7ec55be)
+#### SSO Login
+- Input the Below Data to SSO Login. (Simply Press Enter to Use the Default Value)
+  ```
+  SSO session name [hanwhavision]: 
+  SSO start URL [https://htaic.awsapps.com/start]: 
+  SSO region [us-west-2]: 
+  ```
+- Open the Following URL and Enter the Given Code.
   
-  - After SSO login, allow access.
+  ![image](https://github.com/user-attachments/assets/ade9aa67-a885-4117-ad52-375ae7ec55be)
+
+- After SSO Login, Allow Access.
+
+  ![image](https://github.com/user-attachments/assets/dd72cd0d-7060-45fb-8ae0-bf3b8f52967e)
+
+#### The Profiles of AWS Accounts Accessible are Automatically Saved Inside the Container.
+
+- The internal configuration is completed automatically.
+
+  ![overall_screen](https://github.com/user-attachments/assets/6df6ffb2-71cb-408e-8d36-43f9ba256508)
+
+### [ 3 / 3 ] Access the Inventory Dashboard
+
+- It Runs on Port 5000 (localhost:5000)
+
+  ![Dashboard](https://github.com/user-attachments/assets/7fc0503f-e85c-4973-ad03-c178b2a27007)
+
+### [ Exception ] The SSO Session Expires, You Need to Restart the Container to Login to SSO Again.
   
-    ![image](https://github.com/user-attachments/assets/dd72cd0d-7060-45fb-8ae0-bf3b8f52967e)
+  ![exception](https://github.com/user-attachments/assets/b49e42fd-b034-4207-a6df-5cfc228eb894)
 
-  - Select AWS Account Profile Config Setup Method.
- 
-    ![image](https://github.com/user-attachments/assets/e1ab1526-2eee-460e-9767-ac40c85fc8ac)
-    - Auto: Extract SSO Accounts Profile Automatically.
-    - Manual: Copy & Paste AWS Profile Context.
-      ![image](https://github.com/user-attachments/assets/267737a0-c0db-46d4-8303-5ed6c7f04635)
-      ```
-      [profile {{Project_1 profile name}}]
-      sso_session = {{SSO Session name}}
-      sso_account_id = {{Project_1 AWS account}}
-      sso_role_name = {{Your role name}}
-      region = {{Account region}}
-      output = json
-
-      [profile {{Project_2 profile name}}]
-      sso_session = {{SSO Session name}}
-      sso_account_id = {{Project_2 AWS account}}
-      sso_role_name = {{Your role name}}
-      region = {{Account region}}
-      output = json
-      ```
-### [ 2 / 2 ] Extract to structured inventory file.
-- The inventory file(s) will be successfully created in the inventory volume.
+#### Container Restart
+```bash
+docker stop {{container_name}} && docker start -ai {{container_name}}
+```
