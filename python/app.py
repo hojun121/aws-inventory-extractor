@@ -5,16 +5,17 @@ import os
 import json
 import subprocess
 import configparser
+import zipfile
+import pandas as pd
 from datetime import datetime, timezone
 from tempfile import NamedTemporaryFile
-import pandas as pd
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.styles import PatternFill, Alignment
-from openpyxl.utils import get_column_letter
+from openpyxl.utils import get_column_letter, quote_sheetname
 from openpyxl import load_workbook
 from modules.vpc import list_vpcs
 from modules.subnet import list_subnets
-from modules.sg import list_security_groups
 from modules.nacl import list_nacls
 from modules.ec2 import list_ec2_instances
 from modules.asg import list_auto_scaling_groups
@@ -26,10 +27,9 @@ from modules.iamrole import list_iam_roles
 from modules.db import list_db_clusters
 from modules.elasticache import list_elasticache_clusters
 from modules.msk import list_kafka_clusters
-from modules.sg_resource_mapper import map_sg_to_resources
-from modules.sg_centric_rules import map_sg_rules_with_resources
-from modules.sg_summary import map_sg_summary
-from modules.route53 import list_route53_zones, list_zone_record_sets, sanitize_sheet_name, list_route53
+from modules.sg import list_security_groups
+from modules.sg_detail import fetch_all_sg_data
+from modules.route53 import list_route53, fetch_route53_data, sanitize_sheet_name
 from modules.opensearch import list_opensearch_clusters
 from modules.dynamodb import list_dynamodb_tables
 from modules.eks import list_eks_clusters
@@ -47,11 +47,11 @@ app = Flask(__name__)
 RESOURCE_MAP = {
     "vpcs": list_vpcs,
     "subnets": list_subnets,
-    "security-groups": list_security_groups,
-    "nacl": list_nacls,
-    "ec2": list_ec2_instances,
     "eks": list_eks_clusters,
     "asg": list_auto_scaling_groups,
+    "ec2": list_ec2_instances,
+    "security-groups": list_security_groups,
+    "nacl": list_nacls,
     "elbs": list_elbs,
     "target-groups": list_target_groups,
     "database": list_db_clusters,
@@ -69,6 +69,11 @@ RESOURCE_MAP = {
     "sqs": list_sqs_queues,
     "ses": list_ses_identities,
     "sns": list_sns_topics
+}
+
+DETAIL_RESOURCE_MAP = {
+    "security-groups-details": fetch_all_sg_data,
+    "route53-details": fetch_route53_data
 }
 
 REGION_LIST = [
@@ -156,43 +161,147 @@ def has_valid_sso_token(config_path="~/.aws/config", cache_dir="~/.aws/sso/cache
     return False  # no valid session
 
 def save_excel_with_format(sheet_dict, filename):
+    def sanitize_datetime(df):
+        for col in df.select_dtypes(include=['datetimetz', 'datetime64[ns, UTC]']):
+            df[col] = df[col].dt.tz_localize(None)
+        return df
+
     with pd.ExcelWriter(filename, engine='openpyxl') as writer:
         for sheet_name, df in sheet_dict.items():
+            df = sanitize_datetime(pd.DataFrame(df))
             df.to_excel(writer, sheet_name=sheet_name[:31], index=False)
 
     wb = load_workbook(filename)
     header_fill = PatternFill(start_color='FFFFCC', end_color='FFFFCC', fill_type='solid')
+
     for sheet in wb.sheetnames:
         ws = wb[sheet]
+
+        # Header style
         for cell in ws[1]:
             cell.fill = header_fill
             cell.alignment = Alignment(horizontal='center', vertical='center')
+
+        # Column width auto adjust + center alignment
         for col in ws.columns:
             max_length = max((len(str(cell.value)) for cell in col if cell.value), default=0) + 2
             ws.column_dimensions[get_column_letter(col[0].column)].width = max_length
             for cell in col:
                 cell.alignment = Alignment(horizontal='center', vertical='center')
 
-        # 필터 및 테이블 스타일 추가
+        # Create a Table
         if ws.max_row > 1 and ws.max_column > 0:
             table_range = f"A1:{get_column_letter(ws.max_column)}{ws.max_row}"
-            table = Table(displayName="Table1", ref=table_range)
+            safe_table_name = f"{sheet.replace(' ', '_').replace('-', '_')}_Table"
+            table = Table(displayName=safe_table_name[:30], ref=table_range)
             style = TableStyleInfo(name="TableStyleMedium9", showFirstColumn=False,
                                    showLastColumn=False, showRowStripes=False, showColumnStripes=False)
             table.tableStyleInfo = style
             ws.add_table(table)
 
+    # Hosted Zones → Hyperlink to other sheets
+    if "Hosted Zones" in wb.sheetnames:
+        summary_ws = wb["Hosted Zones"]
+        for row in summary_ws.iter_rows(min_row=2, max_col=1):
+            cell = row[0]
+            zone_name = str(cell.value).rstrip('.')
+            target_sheet = sanitize_sheet_name(zone_name)[:31]
+            if target_sheet in wb.sheetnames:
+                cell.hyperlink = f"#{quote_sheetname(target_sheet)}!A1"
+                cell.style = "Hyperlink"
+
+    # Add each Zone sheet → Hosted Zones hyperlink
+    for sheet in wb.sheetnames:
+        if sheet == "Hosted Zones":
+            continue
+        ws = wb[sheet]
+        last_row = ws.max_row + 2
+
+        # Merge & Write Text
+        max_col = ws.max_column
+        ws.merge_cells(start_row=last_row, start_column=1, end_row=last_row, end_column=max_col)
+
+        cell = ws.cell(row=last_row, column=1)
+        cell.value = "Go to Hosted Zones"
+        cell.hyperlink = f"#{quote_sheetname('Hosted Zones')}!A1"
+        cell.style = "Hyperlink"
+
+        # Background color & Alignment
+        cell.fill = PatternFill(start_color='FFE5E5', end_color='FFE5E5', fill_type='solid')
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+
     wb.save(filename)
 
-@app.route('/')
-def index():
-    profiles = get_aws_profiles()
-    return render_template('index.html', resource_keys=list(RESOURCE_MAP.keys()),
-                            profile_list=profiles,
-                            profile_len=len(profiles),
-                            sso_valid=has_valid_sso_token(),
-                            region_list=REGION_LIST,
-                        )
+def parallel_execute(resource_map, session):
+    results = {}
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {executor.submit(func, session): key for key, func in resource_map.items()}
+        for future in as_completed(futures):
+            key = futures[future]
+            try:
+                results[key] = future.result()
+            except Exception as e:
+                print(f"[ERROR] {key} failed: {e}")
+                results[key] = []
+    return results
+
+def save_excel_from_data(data_dict, sheet_order):
+    
+    def sanitize_datetime(df):
+        for col in df.select_dtypes(include=['datetime64[ns, UTC]', 'datetimetz']):
+            df[col] = df[col].dt.tz_localize(None)
+        return df
+    
+    def workbook_with_format(file_name_with_dir):
+        try:
+            workbook = load_workbook(file_name_with_dir)
+            header_fill = PatternFill(start_color='FFFFCC', end_color='FFFFCC', fill_type='solid')
+            for sheet_name in workbook.sheetnames:
+                worksheet = workbook[sheet_name]
+                for cell in worksheet[1]:
+                    cell.fill = header_fill
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
+                worksheet.auto_filter.ref = worksheet.dimensions
+                for column in worksheet.columns:
+                    max_length = max(len(str(cell.value)) for cell in column if cell.value) + 2
+                    column_letter = get_column_letter(column[0].column)
+                    worksheet.column_dimensions[column_letter].width = max_length
+                    for cell in column:
+                        cell.alignment = Alignment(horizontal='center', vertical='center')
+            workbook.save(file_name_with_dir)
+        except Exception as e:
+            print(f"Error formatting workbook: {e}")
+
+    with NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+        with pd.ExcelWriter(tmp.name, engine='openpyxl') as writer:
+            sheet_written = False
+            for sheet_name in sheet_order:
+                if sheet_name not in data_dict:
+                    continue
+                data = data_dict[sheet_name]
+
+                if isinstance(data, tuple):
+                    sub_sheets = ["Summary", "Details", "Findings"]
+                    for sub_sheet, df in zip(sub_sheets, data):
+                        df = sanitize_datetime(pd.DataFrame(df))
+                        if df.empty:
+                            print(f"[WARNING] Sheet {sheet_name}-{sub_sheet} has no data, skipping.")
+                            continue
+                        sheet_written = True
+                        df.to_excel(writer, sheet_name=sub_sheet, index=False)
+                else:
+                    df = sanitize_datetime(pd.DataFrame(data))
+                    if df.empty:
+                        print(f"[WARNING] Sheet {sheet_name} has no data, skipping.")
+                        continue
+                    sheet_written = True
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+            if not sheet_written:
+                print("[WARNING] No sheets written. Excel file will be empty.")
+
+        workbook_with_format(tmp.name)
+        return tmp.name
 
 @app.route('/api/<resource>')
 def get_resource(resource):
@@ -214,185 +323,75 @@ def get_resource(resource):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/download/overall')
-def download_overall():
+@app.route('/download/selected')
+def selected_region_download():
     profile = request.args.get("profile")
-    if not profile:
-        return "Profile is required", 400
+    region = request.args.get("region")
+    if not profile or not region:
+        return "Profile & Region is required", 400
 
     try:
-        session = boto3.Session(profile_name=profile)
-        file_name = f"{profile}_overall_inventory_{datetime.now().strftime('%y_%m_%d')}.xlsx"
+        session = boto3.Session(profile_name=profile, region_name=region)
 
-        with NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-            sheet_dict = {}
-            for key, func in RESOURCE_MAP.items():
-                try:
-                    data = func(session)
-                    if data:
-                        sheet_dict[key] = pd.DataFrame(data)
-                except Exception as e:
-                    print(f"Skipping {key}: {e}")
+        # Collect Data
+        inventory_data = parallel_execute(RESOURCE_MAP, session)
+        detail_data = parallel_execute(DETAIL_RESOURCE_MAP, session)
 
-            save_excel_with_format(sheet_dict, tmp.name)
-            return send_file(tmp.name, download_name=file_name, as_attachment=True)
+        excel_files = []
+
+        # # Inventory Excel
+        if any(inventory_data.values()):
+            inventory_excel = save_excel_from_data(inventory_data, sheet_order=list(RESOURCE_MAP.keys()))
+            excel_files.append((inventory_excel, f"{profile}_inventory.xlsx"))
+        else:
+            print("[INFO] No Inventory data found. Skipping Inventory Excel.")
+
+        # SG Detail Excel
+        sg_raw = detail_data.get("security-groups-details", [])
+        if sg_raw:
+            sg_data = {"security-groups-details": sg_raw}
+            sg_excel = save_excel_from_data(sg_data, sheet_order=["security-groups-details"])
+            excel_files.append((sg_excel, f"{profile}_detail_sg.xlsx"))
+        else:
+            print("[INFO] No Security Group data found. Skipping SG Excel.")
+
+        # Route53 Excel
+        route53_data = detail_data.get("route53-details", {})
+        has_route53_data = any(not df.empty for df in route53_data.values()) if route53_data else False
+
+        if has_route53_data:
+            with NamedTemporaryFile(delete=False, suffix=".xlsx") as route53_tmp:
+                save_excel_with_format(route53_data, route53_tmp.name)
+                excel_files.append((route53_tmp.name, f"{profile}_route53.xlsx"))
+        else:
+            print("[INFO] No Route53 data found in any sheet. Skipping Route53 Excel.")
+
+        # ZIP Compression
+        with NamedTemporaryFile(delete=False, suffix=".zip") as tmp_zip:
+            with zipfile.ZipFile(tmp_zip.name, 'w') as zipf:
+                if not excel_files:
+                    print("[WARNING] No Excel files generated. Returning empty zip.")
+                for file_path, arc_name in excel_files:
+                    zipf.write(file_path, arcname=arc_name)
+
+        # Delete temporary Excel file
+        for file_path, _ in excel_files:
+            os.remove(file_path)
+
+        return send_file(tmp_zip.name, download_name=f"{profile}_aws_inventory_{datetime.now().strftime('%y_%m_%d')}.zip", as_attachment=True)
 
     except Exception as e:
         return str(e), 500
 
-# @app.route('/download/route53')
-# def download_route53_detail():
-#     profile = request.args.get("profile")
-#     if not profile:
-#         return "Profile is required", 400
-
-#     try:
-#         session = boto3.Session(profile_name=profile)
-#         file_name = f"{profile}_route53_detail_inventory_{datetime.now().strftime('%y_%m_%d')}.xlsx"
-
-#         with NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-#             zones, summary_df = list_route53_zones(session)
-#             sheet_dict = {"Hosted Zones": summary_df}
-#             for zone in zones:
-#                 zone_name = zone['Name'].rstrip('.')
-#                 sheet_name = sanitize_sheet_name(zone_name)
-#                 records_df = list_zone_record_sets(session, zone['Id'])
-#                 sheet_dict[sheet_name] = records_df
-
-#             save_excel_with_format(sheet_dict, tmp.name)
-#             return send_file(tmp.name, download_name=file_name, as_attachment=True)
-
-#     except Exception as e:
-#         return str(e), 500
-
-# @app.route('/download/sg')
-# def download_sg_detail():
-#     profile = request.args.get("profile")
-#     if not profile:
-#         return "Profile is required", 400
-
-#     try:
-#         session = boto3.Session(profile_name=profile)
-#         file_name = f"{profile}_sg_detail_inventory_{datetime.now().strftime('%y_%m_%d')}.xlsx"
-
-#         with NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-#             sheet_dict = {
-#                 "SG-Resource No Rules": pd.DataFrame(map_sg_summary(session)),
-#                 "SG-Resource Rules": pd.DataFrame(map_sg_rules_with_resources(session)),
-#                 "Resource-SG-Rules": pd.DataFrame(map_sg_to_resources(session))
-#             }
-#             save_excel_with_format(sheet_dict, tmp.name)
-#             return send_file(tmp.name, download_name=file_name, as_attachment=True)
-
-#     except Exception as e:
-#         return str(e), 500
-
-# @app.route('/download/sg_report')
-# def download_sg_report():
-#     profile = request.args.get("profile")
-#     if not profile:
-#         return "Profile is required", 400
-
-#     try:
-#         session = boto3.Session(profile_name=profile)
-#         sg_data = map_sg_rules_with_resources(session)
-#         if not sg_data:
-#             return "No SG data available", 404
-
-#         df = pd.DataFrame(sg_data)
-
-#         def analyze_sg(row):
-#             findings = []
-#             direction = row.get("Direction", "")
-#             port = str(row.get("Port Range", ""))
-#             source = str(row.get("Src Origin", ""))
-#             source_name = str(row.get("Src Parsed", ""))
-#             destination = str(row.get("Des Origin", ""))
-#             destination_name = str(row.get("Des Parsed", ""))
-#             protocol = str(row.get("Protocol", "")).lower()
-#             sg_id = row.get("Security Group ID", "")
-
-#             is_sg_source = source.startswith("sg-")
-#             is_sg_dest = destination.startswith("sg-")
-
-            
-#             # Rule 1: overly open to 0.0.0.0/0
-#             if direction == "Inbound" and source == "0.0.0.0/0" and (
-#                 re.search(r"^22$|^22[-:]", port) or protocol == "all"
-#             ):
-#                 findings.append("Inbound 0.0.0.0/0 open (22/ALL)")
-
-#             if direction == "Outbound" and destination == "0.0.0.0/0" and protocol == "all":
-#                 findings.append("Outbound 0.0.0.0/0 open (ALL)")
-
-#             # Rule 2: unused SG
-#             if str(row.get("Usage", "")).strip().upper() == "FALSE":
-#                 findings.append("Unused SG")
-
-#             # Rule 3: SG reference mismatch
-#             # --- Outbound: referencing a destination SG ---
-#             if direction == "Outbound" and is_sg_dest:
-#                 matched_inbound = (
-#                     (df["Security Group ID"] == destination) &
-#                     (df["Direction"] == "Inbound") &
-#                     (df["Src Origin"] == sg_id)
-#                 )
-#                 if not matched_inbound.any():
-#                     # Check if target SG is just open to 0.0.0.0/0
-#                     open_inbound = (
-#                         (df["Security Group ID"] == destination) &
-#                         (df["Direction"] == "Inbound") &
-#                         (df["Src Origin"] == "0.0.0.0/0")
-#                     )
-#                     if open_inbound.any():
-#                         findings.append(f"Outbound references {destination_name} but no matching inbound (note: {destination_name} open to 0.0.0.0/0)")
-#                     else:
-#                         findings.append(f"Outbound references {destination_name} but no matching inbound")
-
-#             # --- Inbound: referencing a source SG ---
-#             if direction == "Inbound" and is_sg_source:
-#                 matched_outbound = (
-#                     (df["Security Group ID"] == source) &
-#                     (df["Direction"] == "Outbound") &
-#                     (df["Des Origin"] == sg_id)
-#                 )
-#                 if not matched_outbound.any():
-#                     # Check if source SG is open to 0.0.0.0/0
-#                     open_outbound = (
-#                         (df["Security Group ID"] == source) &
-#                         (df["Direction"] == "Outbound") &
-#                         (df["Des Origin"] == "0.0.0.0/0")
-#                     )
-#                     if open_outbound.any():
-#                         findings.append(f"Inbound references {source_name} but no matching outbound (note: {source_name} open to 0.0.0.0/0)")
-#                     else:
-#                         findings.append(f"Inbound references {source_name} but no matching outbound")
-
-#             return ", ".join(findings)
-
-
-#         df["Findings"] = df.apply(analyze_sg, axis=1)
-#         df_filtered = df[df["Findings"] != ""]
-#         columns_to_drop = [
-#             "Usage", "Region", "Src Origin", "Des Origin", 
-#             "Resource Name", "Resource ID", "Resource Type", 
-#             "ENI ID", "Private IP", "Security Group ID", "SG Description"
-#         ]
-#         df_filtered = df_filtered.drop(columns=[col for col in columns_to_drop if col in df_filtered.columns])
-#         df_filtered = df_filtered.drop_duplicates()
-#         cols = df_filtered.columns.tolist()
-#         if "Findings" in cols:
-#             cols.insert(0, cols.pop(cols.index("Findings")))
-#             df_filtered = df_filtered[cols]
-
-#         file_name = f"{profile}_sg_findings_{datetime.now().strftime('%y_%m_%d')}.xlsx"
-#         with NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
-#             sheet_dict = {"SG Findings": df_filtered}
-#             save_excel_with_format(sheet_dict, tmp.name)
-#             return send_file(tmp.name, download_name=file_name, as_attachment=True)
-
-#     except Exception as e:
-#         return str(e), 500
+@app.route('/')
+def index():
+    profiles = get_aws_profiles()
+    return render_template('index.html', resource_keys=list(RESOURCE_MAP.keys()),
+                            profile_list=profiles,
+                            profile_len=len(profiles),
+                            sso_valid=has_valid_sso_token(),
+                            region_list=REGION_LIST,
+                        )
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

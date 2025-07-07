@@ -10,13 +10,16 @@ def list_kms_keys(session):
         key_id = key.get("KeyId", "-")
         key_info = exponential_backoff(client.describe_key, KeyId=key_id).get("KeyMetadata", {})
 
+        creation_date = key_info.get("CreationDate")
+        creation_date_str = creation_date.astimezone().replace(tzinfo=None).isoformat() if creation_date else "-"
+
         result.append({
             "Key ID": key_id,
             "ARN": key_info.get("Arn", "-"),
             "Description": key_info.get("Description", "-"),
             "Key State": key_info.get("KeyState", "-"),
             "Key Usage": key_info.get("KeyUsage", "-"),
-            "Creation Date": key_info.get("CreationDate", "-"),
+            "Creation Date": creation_date_str,
             "Enabled": key_info.get("Enabled", False),
             "Customer Master Key Spec": key_info.get("CustomerMasterKeySpec", "-"),
             "Key Manager": key_info.get("KeyManager", "-"),

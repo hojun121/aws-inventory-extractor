@@ -9,6 +9,9 @@ def list_eks_clusters(session):
     for cluster_name in cluster_names:
         cluster_info = exponential_backoff(client.describe_cluster, name=cluster_name).get("cluster", {})
 
+        created_at = cluster_info.get("createdAt")
+        created_at_str = created_at.astimezone().replace(tzinfo=None).isoformat() if created_at else "-"
+
         result.append({
             "Cluster Name": cluster_name,
             "Status": cluster_info.get("status", "-"),
@@ -18,7 +21,7 @@ def list_eks_clusters(session):
             "VPC ID": cluster_info.get("resourcesVpcConfig", {}).get("vpcId", "-"),
             "Subnet IDs": ", ".join(cluster_info.get("resourcesVpcConfig", {}).get("subnetIds", [])),
             "Security Group IDs": ", ".join(cluster_info.get("resourcesVpcConfig", {}).get("securityGroupIds", [])),
-            "Created At": cluster_info.get("createdAt", "-"),
+            "Created At": created_at_str,
             "ARN": cluster_info.get("arn", "-")
         })
 

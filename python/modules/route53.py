@@ -87,3 +87,16 @@ def list_route53(session):
             })
 
     return result
+
+def fetch_route53_data(session):
+    zones, summary_df = list_route53_zones(session)
+    sheet_dict = {"Hosted Zones": summary_df}
+
+    for zone in zones:
+        zone_id = zone['Id'].split('/')[-1]
+        zone_name = zone['Name'].rstrip('.')
+        sheet_name = sanitize_sheet_name(zone_name)
+        records_df = list_zone_record_sets(session, zone_id)
+        sheet_dict[sheet_name] = records_df
+
+    return sheet_dict
