@@ -1,6 +1,6 @@
 # AWS Resource Inventory Extractor
 
-A module that uses awscli and the open-source tool Steampipe to extract AWS resources and export them to a structured inventory file.
+A module that uses awscli to extract AWS resources and export them to a structured inventory file.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/08ed8337-916c-4ae7-8c1c-66d26ff85329" alt="AWS Resource Inventory Extractor">
@@ -98,5 +98,5 @@ docker run --rm -it -v {{Your Host Directory}}:/app/inventory {{imageName}}
       region = {{Account region}}
       output = json
       ```
-### [ 2 / 2 ] Extract an in-memory postgreSQL to structured inventory file.
+### [ 2 / 2 ] Extract to structured inventory file.
 - The inventory file(s) will be successfully created in the inventory volume.

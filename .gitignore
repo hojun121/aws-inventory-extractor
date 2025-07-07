@@ -1,1 +1,21 @@
+# Python cache
 **/__pycache__/
+**/*.pyc
+
+# PyInstaller
+dist/
+build/
+*.spec
+
+# Virtualenv
+.venv/
+env/
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
